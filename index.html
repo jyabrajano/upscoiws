@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="robots" content="noindex, nofollow">
+
+<!--
+  Content Security Policy — ON.
+
+  It stops injected script from shipping what's typed here to an
+  address that isn't your Supabase project. It does NOT hide the
+  source; nothing served to a browser can be hidden.
+
+  Because it is on, this page no longer works opened straight off
+  disk (file:///...) — 'self' means nothing there and the page will
+  break. Serve it over http(s) to test:
+
+    npx --yes http-server . -p 8080
+
+  Send the same policy as a response header from your host as well
+  (Netlify _headers, Vercel vercel.json, nginx add_header) — a
+  header can also carry frame-ancestors, which a <meta> tag can't.
+
+  Keep this identical across all seven pages. The connect-src line is
+  generated -- run `node sync-csp.js` rather than editing it by hand.
+  If you self-host the Supabase SDK, drop cdn.jsdelivr.net from
+  script-src.
+
+  script-src no longer carries 'unsafe-inline'. That is the whole
+  point of the page-*.js files: every page used to end in a several
+  hundred line inline <script>, and while one of those is on the page
+  the directive has to allow inline script, which is the same
+  permission an injected <script> needs. The directive was there
+  looking like a control and enforcing nothing against the attack it
+  names.
+
+  Two things will silently put that back. Adding an inline <script>
+  block anywhere in the file, and adding an onclick= (or any on*=)
+  attribute to any element -- CSP treats a handler attribute as inline
+  script, and neither a nonce nor a hash exempts it. Both fail closed:
+  the code simply does not run, and the browser console says so.
+  Attach a listener in the page's .js file instead.
+
+  style-src does still carry 'unsafe-inline', deliberately and
+  separately. Every page holds a large inline <style> block, and
+  config.js builds one more at runtime for the password toggles.
+  Removing it there is its own piece of work and buys much less --
+  inline style is not a script execution primitive.
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' https://cdn.jsdelivr.net;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com;
+  img-src 'self' data:;
+  connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co;
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self';
+">
+<title>U.P. System Cash Office Integrated Web System — Sign In</title>
+<link rel="icon" type="image/png" href="UPSeal.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+  :root {
+    --maroon: #7b1113;
+    --maroon-dark: #5c0d0f;
+    --maroon-soft: rgba(123, 17, 19, 0.08);
+    --maroon-glow: rgba(123, 17, 19, 0.22);
+    --white: #ffffff;
+    --yellow: #f5b041;
+    --yellow-soft: #fef9ec;
+    --yellow-glow: rgba(245, 176, 65, 0.35);
+    --ink: #1e293b;
+    --muted: #64748b;
+    --bg: #f7f4ef;
+    --card: rgba(255, 255, 255, 0.94);
+    --border: rgba(123, 17, 19, 0.1);
+
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-xs: 8px;
+    --shadow-sm: 0 1px 2px rgba(92, 13, 15, 0.05);
+    --shadow-md: 0 4px 12px rgba(92, 13, 15, 0.08), 0 1px 3px rgba(92, 13, 15, 0.04);
+    --shadow-lg: 0 12px 40px rgba(92, 13, 15, 0.12), 0 4px 12px rgba(92, 13, 15, 0.06);
+    --shadow-btn: 0 2px 8px rgba(123, 17, 19, 0.28);
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    border-top: 4px solid var(--maroon);
+    background-image:
+      radial-gradient(ellipse 90% 60% at 5% 0%, rgba(123, 17, 19, 0.09) 0%, transparent 55%),
+      radial-gradient(ellipse 70% 50% at 100% 10%, rgba(245, 176, 65, 0.14) 0%, transparent 50%),
+      radial-gradient(ellipse 80% 40% at 50% 100%, rgba(123, 17, 19, 0.06) 0%, transparent 55%),
+      linear-gradient(180deg, #faf7f2 0%, #f3ebe0 100%);
+    background-attachment: fixed;
+    position: relative;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(123, 17, 19, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(123, 17, 19, 0.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 440px;
+    background: var(--card);
+    backdrop-filter: blur(24px) saturate(1.2);
+    -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    border-radius: 16px;
+    box-shadow:
+      var(--shadow-lg),
+      0 0 0 1px var(--border),
+      inset 0 1px 0 rgba(255,255,255,0.95);
+    overflow: hidden;
+  }
+
+  .card-header {
+    background: linear-gradient(135deg, var(--maroon) 0%, var(--maroon-dark) 100%);
+    padding: 32px 32px 26px;
+    position: relative;
+  }
+
+  .card-header::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, transparent, var(--yellow), transparent);
+  }
+
+  .logo-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .logo {
+    width: 84px;
+    height: 84px;
+    flex-shrink: 0;
+    object-fit: contain;
+    padding: 6px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 72%);
+    filter: drop-shadow(0 3px 10px rgba(0,0,0,0.28));
+  }
+
+  .card-header .heading {
+    text-align: left;
+    min-width: 0;
+  }
+
+  .card-header h1 {
+    color: var(--white);
+    font-size: 19px;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: 0.3px;
+    line-height: 1.32;
+    text-shadow: 0 0 20px var(--yellow-glow);
+  }
+
+  .card-header p {
+    color: rgba(255,255,255,0.78);
+    font-size: 11px;
+    margin: 6px 0 0;
+    font-family: "JetBrains Mono", monospace;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+  }
+
+  .card-body { padding: 32px; }
+
+  .field { margin-bottom: 18px; }
+
+  .field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 7px;
+  }
+
+  .field input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: var(--radius-sm);
+    font-size: 14.5px;
+    font-family: inherit;
+    background: rgba(255,255,255,0.9);
+    color: var(--ink);
+    transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  }
+
+  .field input:focus {
+    outline: none;
+    border-color: var(--maroon);
+    box-shadow: 0 0 0 3px var(--maroon-soft);
+  }
+
+  .field input::placeholder { color: #94a3b8; }
+
+  /* Locked / Read-only styling for Full Name */
+  #fullName {
+    text-transform: uppercase;
+    background-color: #f1f5f9;
+    color: var(--muted);
+    border-color: #cbd5e1;
+    cursor: not-allowed;
+  }
+
+  #fullName:focus {
+    border-color: #cbd5e1;
+    box-shadow: none;
+  }
+
+  button.primary {
+    width: 100%;
+    background: linear-gradient(135deg, var(--maroon) 0%, var(--maroon-dark) 100%);
+    color: var(--white);
+    border: none;
+    padding: 14px;
+    border-radius: var(--radius-sm);
+    font-size: 14.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+    letter-spacing: 0.3px;
+    box-shadow: var(--shadow-btn);
+  }
+
+  button.primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(123, 17, 19, 0.35), 0 8px 28px rgba(123, 17, 19, 0.12);
+  }
+
+  button.primary:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
+  /* --- UP Mail SSO & Divider --- */
+  .divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 20px 0;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .divider span {
+    padding: 0 10px;
+  }
+
+  button.sso-btn {
+    width: 100%;
+    background: var(--white);
+    color: var(--maroon-dark);
+    border: 1.5px solid var(--border);
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  button.sso-btn:hover {
+    background-color: var(--maroon-soft);
+    border-color: var(--maroon);
+    box-shadow: 0 2px 8px var(--maroon-soft);
+  }
+
+  button.sso-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+  /* ----------------------------- */
+
+  .toggle-row {
+    text-align: center;
+    margin-top: 22px;
+    font-size: 13.5px;
+    color: var(--muted);
+  }
+
+  .toggle-row button {
+    background: none;
+    border: none;
+    color: var(--maroon);
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 13.5px;
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .toggle-row button:hover { color: var(--maroon-dark); }
+
+  .status {
+    font-size: 13px;
+    padding: 11px 14px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 18px;
+    display: none;
+    line-height: 1.4;
+  }
+
+  .status.error {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+  }
+
+  .status.success {
+    background: var(--yellow-soft);
+    color: #854d0e;
+    border: 1px solid #fde68a;
+  }
+
+  .status.notice {
+    background: #f8fafc;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid var(--maroon);
+  }
+
+  .status.visible { display: block; }
+
+  .status strong { display: block; margin-bottom: 4px; font-size: 13.5px; }
+
+  .status-action {
+    display: inline-block;
+    margin-top: 9px;
+    padding: 7px 12px;
+    border: 1px solid currentColor;
+    border-radius: var(--radius-xs);
+    background: rgba(255,255,255,0.65);
+    color: inherit;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .status-action:hover:not(:disabled) { background: var(--white); }
+  .status-action:disabled { opacity: 0.65; cursor: not-allowed; }
+
+  .forgot-row {
+    text-align: right;
+    margin: -8px 0 16px;
+  }
+
+  .forgot-row button {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--maroon);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .forgot-row button:hover { color: var(--maroon-dark); }
+
+  .reset-panel {
+    display: none;
+    margin-top: 16px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--yellow);
+    border-radius: var(--radius-sm);
+    background: #fdfcfa;
+  }
+
+  .reset-panel.open { display: block; }
+
+  .reset-panel label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    margin-bottom: 7px;
+  }
+
+  .reset-row { display: flex; gap: 8px; }
+
+  .reset-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: var(--radius-xs);
+    font-size: 14px;
+    font-family: inherit;
+    background: var(--white);
+    color: var(--ink);
+  }
+
+  .reset-row input:focus {
+    outline: none;
+    border-color: var(--maroon);
+    box-shadow: 0 0 0 3px var(--maroon-soft);
+  }
+
+  .reset-row button {
+    flex-shrink: 0;
+    padding: 0 16px;
+    border: none;
+    border-radius: var(--radius-xs);
+    background: var(--maroon);
+    color: var(--white);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .reset-row button:hover:not(:disabled) { background: var(--maroon-dark); }
+  .reset-row button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .reset-hint {
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--muted);
+    margin: 9px 0 0;
+  }
+
+  /* A box that's blocking the form gets an outline and nothing else.
+     It points at where to look without naming what's wrong. */
+  input.is-invalid,
+  input.is-invalid:focus {
+    border-color: #fca5a5;
+    box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.08);
+  }
+
+  /* Sits under the button. Says whether the form is ready, never
+     why it isn't. */
+  .gate-hint {
+    min-height: 16px;
+    margin: 10px 0 0;
+    text-align: center;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+
+  .footer-note {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 11.5px;
+    color: var(--muted);
+    letter-spacing: 0.3px;
+  }</style>
+</head>
+<body>
+  <div class="card">
+    <div class="card-header">
+      <div class="logo-wrap">
+        <img class="logo" src="UPSeal.png" alt="University of the Philippines Seal">
+        <div class="heading">
+          <h1>U.P. System Cash Office - IntWSys</h1>
+          <p>TRANSACTION UPDATE/INQUIRY PORTAL</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <div id="status" class="status" role="alert"></div>
+
+      <form id="authForm" novalidate>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" required placeholder="Email" autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <!--
+            No minlength here on purpose, and it is not an oversight.
+
+            This is the *sign-in* box, not a set-password box. A floor
+            on it enforces nothing — the password already exists — and
+            it does real harm in one direction: raising the Auth
+            minimum to 8 does not invalidate passwords already in use,
+            so anyone still on a 6- or 7-character password needs to be
+            able to sign in and change it. A minlength of 8 here would
+            lock exactly those people out of the page they'd use to fix
+            it. It read `minlength="6"`, which was also the only place
+            in the app still implying the floor was 6.
+
+            The boxes that *set* a password — registration.html,
+            editaccount.html and reset-password.html — keep their
+            floor. It is PASSWORD_MIN_LENGTH in config.js now rather
+            than an 8 typed into each of them, and they opt in with
+            data-password-policy; this box deliberately does not.
+            See §2.2 of DEPLOYMENT-README.md for the floor that
+            actually enforces itself, which is Supabase's own.
+          -->
+          <input type="password" id="password" required placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <div class="forgot-row" id="forgotRow">
+          <button type="button" id="forgotBtn">Forgot password?</button>
+        </div>
+        <button type="submit" class="primary" id="submitBtn" disabled>Sign In</button>
+        <p class="gate-hint" id="signInGate" aria-live="polite"></p>
+      </form>
+
+      <div class="reset-panel" id="resetPanel">
+        <label for="resetEmail">Email on your account</label>
+        <div class="reset-row">
+          <input type="email" id="resetEmail" placeholder="Email" autocomplete="email">
+          <button type="button" id="sendResetBtn" disabled>Send link</button>
+        </div>
+        <p class="reset-hint">
+          We'll email you a link that lets you set a new password. It's good for
+          about an hour. Signing in with UP Mail? Your password is managed by
+          Google, not by this portal.
+        </p>
+      </div>
+
+      <div class="divider"><span>OR SIGN IN WITH</span></div>
+
+      <!-- UP Mail SSO Button -->
+      <button type="button" class="sso-btn" id="ssoBtn">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+        </svg>
+         UP Mail
+      </button>
+
+      <div class="toggle-row">
+        Need an account? <a href="registration.html">Create one</a>
+      </div>
+
+      <p class="footer-note">Secure internal portal · Authorized personnel only<br>
+        <a href="privacy.html">Privacy Notice</a> &middot; <a href="terms.html">Terms of Use</a></p>
+    </div>
+  </div>
+
+  <script src="page-index.js"></script>
+</body>
+</html>

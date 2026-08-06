@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="robots" content="noindex, nofollow">
+<title>Create an Account — U.P. System Cash Office</title>
+<link rel="icon" type="image/png" href="UPSeal.png">
+
+<!--
+  Content Security Policy — ON.
+
+  It stops injected script from shipping what's typed here to an
+  address that isn't your Supabase project. It does NOT hide the
+  source; nothing served to a browser can be hidden.
+
+  Because it is on, this page no longer works opened straight off
+  disk (file:///...) — 'self' means nothing there and the page will
+  break. Serve it over http(s) to test:
+
+    npx --yes http-server . -p 8080
+
+  Send the same policy as a response header from your host as well
+  (Netlify _headers, Vercel vercel.json, nginx add_header) — a
+  header can also carry frame-ancestors, which a <meta> tag can't.
+
+  Keep this identical across all seven pages. The connect-src line is
+  generated -- run `node sync-csp.js` rather than editing it by hand.
+  If you self-host the Supabase SDK, drop cdn.jsdelivr.net from
+  script-src.
+
+  script-src no longer carries 'unsafe-inline'. That is the whole
+  point of the page-*.js files: every page used to end in a several
+  hundred line inline <script>, and while one of those is on the page
+  the directive has to allow inline script, which is the same
+  permission an injected <script> needs. The directive was there
+  looking like a control and enforcing nothing against the attack it
+  names.
+
+  Two things will silently put that back. Adding an inline <script>
+  block anywhere in the file, and adding an onclick= (or any on*=)
+  attribute to any element -- CSP treats a handler attribute as inline
+  script, and neither a nonce nor a hash exempts it. Both fail closed:
+  the code simply does not run, and the browser console says so.
+  Attach a listener in the page's .js file instead.
+
+  style-src does still carry 'unsafe-inline', deliberately and
+  separately. Every page holds a large inline <style> block, and
+  config.js builds one more at runtime for the password toggles.
+  Removing it there is its own piece of work and buys much less --
+  inline style is not a script execution primitive.
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' https://cdn.jsdelivr.net;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com;
+  img-src 'self' data:;
+  connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co;
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self';
+">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+
+  :root {
+    --maroon: #7b1113;
+    --maroon-dark: #5c0d0f;
+    --maroon-soft: rgba(123, 17, 19, 0.08);
+    --maroon-glow: rgba(123, 17, 19, 0.22);
+    --white: #ffffff;
+    --yellow: #f5b041;
+    --yellow-soft: #fef9ec;
+    --yellow-glow: rgba(245, 176, 65, 0.35);
+    --ink: #1e293b;
+    --muted: #64748b;
+    --bg: #f7f4ef;
+    --card: rgba(255, 255, 255, 0.94);
+    --border: rgba(123, 17, 19, 0.1);
+
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-xs: 8px;
+    --shadow-sm: 0 1px 2px rgba(92, 13, 15, 0.05);
+    --shadow-md: 0 4px 12px rgba(92, 13, 15, 0.08), 0 1px 3px rgba(92, 13, 15, 0.04);
+    --shadow-lg: 0 12px 40px rgba(92, 13, 15, 0.12), 0 4px 12px rgba(92, 13, 15, 0.06);
+    --shadow-btn: 0 2px 8px rgba(123, 17, 19, 0.28);
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    border-top: 4px solid var(--maroon);
+    background-image:
+      radial-gradient(ellipse 90% 60% at 5% 0%, rgba(123, 17, 19, 0.09) 0%, transparent 55%),
+      radial-gradient(ellipse 70% 50% at 100% 10%, rgba(245, 176, 65, 0.14) 0%, transparent 50%),
+      radial-gradient(ellipse 80% 40% at 50% 100%, rgba(123, 17, 19, 0.06) 0%, transparent 55%),
+      linear-gradient(180deg, #faf7f2 0%, #f3ebe0 100%);
+    background-attachment: fixed;
+    position: relative;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(123, 17, 19, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(123, 17, 19, 0.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 440px;
+    background: var(--card);
+    backdrop-filter: blur(24px) saturate(1.2);
+    -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    border-radius: 16px;
+    box-shadow:
+      var(--shadow-lg),
+      0 0 0 1px var(--border),
+      inset 0 1px 0 rgba(255,255,255,0.95);
+    overflow: hidden;
+  }
+
+  .card-header {
+    background: linear-gradient(135deg, var(--maroon) 0%, var(--maroon-dark) 100%);
+    padding: 32px 32px 26px;
+    position: relative;
+  }
+
+  .card-header::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, transparent, var(--yellow), transparent);
+  }
+
+  .logo-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .logo {
+    width: 84px;
+    height: 84px;
+    flex-shrink: 0;
+    object-fit: contain;
+    padding: 6px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 72%);
+    filter: drop-shadow(0 3px 10px rgba(0,0,0,0.28));
+  }
+
+  .card-header .heading {
+    text-align: left;
+    min-width: 0;
+  }
+
+  .card-header h1 {
+    color: var(--white);
+    font-size: 19px;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: 0.3px;
+    line-height: 1.32;
+    text-shadow: 0 0 20px var(--yellow-glow);
+  }
+
+  .card-header p {
+    color: rgba(255,255,255,0.78);
+    font-size: 11px;
+    margin: 6px 0 0;
+    font-family: "JetBrains Mono", monospace;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+  }
+
+  .card-body { padding: 32px; }
+
+  .field { margin-bottom: 18px; }
+
+  .field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 7px;
+  }
+
+  .field input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: var(--radius-sm);
+    font-size: 14.5px;
+    font-family: inherit;
+    background: rgba(255,255,255,0.9);
+    color: var(--ink);
+    transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  }
+
+  .field input:focus {
+    outline: none;
+    border-color: var(--maroon);
+    box-shadow: 0 0 0 3px var(--maroon-soft);
+  }
+
+  .field input::placeholder { color: #94a3b8; }
+
+  /* Locked / Read-only styling for Full Name */
+  #fullName {
+    text-transform: uppercase;
+    background-color: #f1f5f9;
+    color: var(--muted);
+    border-color: #cbd5e1;
+    cursor: not-allowed;
+  }
+
+  #fullName:focus {
+    border-color: #cbd5e1;
+    box-shadow: none;
+  }
+
+  button.primary {
+    width: 100%;
+    background: linear-gradient(135deg, var(--maroon) 0%, var(--maroon-dark) 100%);
+    color: var(--white);
+    border: none;
+    padding: 14px;
+    border-radius: var(--radius-sm);
+    font-size: 14.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+    letter-spacing: 0.3px;
+    box-shadow: var(--shadow-btn);
+  }
+
+  button.primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(123, 17, 19, 0.35), 0 8px 28px rgba(123, 17, 19, 0.12);
+  }
+
+  button.primary:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+  /* ----------------------------- */
+
+  /* Privacy notice acknowledgement — RA 10173 s.16 (right to be
+     informed). Not a consent checkbox: see privacy.html for why the
+     lawful basis here is 12(c)/(e) rather than consent. */
+  .privacy-ack {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin: 14px 0 4px;
+    font-size: 0.855rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .privacy-ack input[type="checkbox"] {
+    width: 16px; height: 16px;
+    margin-top: 2px;
+    flex-shrink: 0;
+    accent-color: var(--maroon);
+    cursor: pointer;
+  }
+  .privacy-ack label { cursor: pointer; }
+  .privacy-ack a { color: var(--maroon); font-weight: 600; }
+  .privacy-ack a:hover { color: var(--maroon-dark); }
+
+  .toggle-row {
+    text-align: center;
+    margin-top: 22px;
+    font-size: 13.5px;
+    color: var(--muted);
+  }
+
+  .toggle-row button {
+    background: none;
+    border: none;
+    color: var(--maroon);
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 13.5px;
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .toggle-row button:hover { color: var(--maroon-dark); }
+
+  .status {
+    font-size: 13px;
+    padding: 11px 14px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 18px;
+    display: none;
+    line-height: 1.4;
+  }
+
+  .status.error {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+  }
+
+  .status.success {
+    background: var(--yellow-soft);
+    color: #854d0e;
+    border: 1px solid #fde68a;
+  }
+
+  .status.notice {
+    background: #f8fafc;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid var(--maroon);
+  }
+
+  .status.visible { display: block; }
+
+  .status strong { display: block; margin-bottom: 4px; font-size: 13.5px; }
+
+  .optional-tag {
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-left: 4px;
+  }
+
+  .reset-panel.open { display: block; }
+
+  .footer-note {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 11.5px;
+    color: var(--muted);
+    letter-spacing: 0.3px;
+  }
+
+  /* ---- account number list (up to 3) ---- */
+  .acct-rows { display: flex; flex-direction: column; gap: 8px; }
+  .acct-row { display: flex; align-items: center; gap: 8px; }
+  .acct-row input { flex: 1; min-width: 0; }
+  .acct-remove {
+    flex-shrink: 0;
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid #e2e8f0;
+    border-radius: var(--radius-xs);
+    background: var(--white);
+    color: var(--muted);
+    font-size: 20px; line-height: 1;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .acct-remove:hover { color: var(--maroon); border-color: var(--maroon); background: var(--maroon-soft); }
+  .acct-add {
+    margin-top: 9px; padding: 0; border: none; background: none;
+    color: var(--maroon); font-family: inherit; font-size: 12.5px;
+    font-weight: 600; cursor: pointer; text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .acct-add:hover { color: var(--maroon-dark); }
+  .field-hint { font-size: 11.5px; color: var(--muted); margin: 7px 0 0; line-height: 1.5; }
+  .dup-warn.show { display: block; }
+
+  /* A box that's blocking the form gets an outline and nothing else.
+     It points at where to look without naming what's wrong. */
+  input.is-invalid,
+  input.is-invalid:focus {
+    border-color: #fca5a5;
+    box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.08);
+  }
+
+  /* Sits under the button. Says whether the form is ready, never
+     why it isn't. */
+  .gate-hint {
+    min-height: 16px;
+    margin: 10px 0 0;
+    text-align: center;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+  #regFullName, #eaFullName {
+    text-transform: uppercase; background-color: #f1f5f9;
+    color: var(--muted); border-color: #cbd5e1; cursor: not-allowed;
+  }
+  #regFullName:focus, #eaFullName:focus { border-color: #cbd5e1; box-shadow: none; }
+  .card { max-width: 480px; }
+  .section-rule {
+    display: flex; align-items: center; text-align: center;
+    margin: 26px 0 18px; color: #94a3b8;
+    font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  }
+  .section-rule::before, .section-rule::after { content: ''; flex: 1; border-bottom: 1px solid #e2e8f0; }
+  .section-rule span { padding: 0 10px; }</style>
+</head>
+<body>
+  <div class="card">
+    <div class="card-header">
+      <div class="logo-wrap">
+        <img class="logo" src="UPSeal.png" alt="University of the Philippines Seal">
+        <div class="heading">
+          <h1>U.P. System Cash Office - IntWSys</h1>
+          <p>CREATE AN ACCOUNT</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <div id="status" class="status" role="alert"></div>
+
+      <form id="regForm" novalidate>
+        <div class="field">
+          <label for="regFirstName">First Name</label>
+          <input type="text" id="regFirstName" placeholder="Juan" autocomplete="given-name" required>
+        </div>
+        <div class="field">
+          <label for="regMiddleInitial">M.I. <span class="optional-tag">optional</span></label>
+          <input type="text" id="regMiddleInitial" placeholder="D. or D.C." maxlength="4" autocomplete="additional-name">
+        </div>
+        <div class="field">
+          <label for="regLastName">Last Name</label>
+          <input type="text" id="regLastName" placeholder="Dela Cruz" autocomplete="family-name" required>
+        </div>
+        <div class="field">
+          <label for="regSuffix">Suffix <span class="optional-tag">optional</span></label>
+          <input type="text" id="regSuffix" placeholder="Jr., Sr., III&#8230;" maxlength="10"
+                 list="regSuffixOptions" autocomplete="honorific-suffix">
+          <datalist id="regSuffixOptions">
+            <option value="Jr."></option><option value="Sr."></option>
+            <option value="II"></option><option value="III"></option>
+            <option value="IV"></option><option value="V"></option>
+          </datalist>
+        </div>
+        <div class="field">
+          <label for="regFullName">Full name</label>
+          <input type="text" id="regFullName" placeholder="LAST NAME, FIRST NAME M.I. SUFFIX" autocomplete="name" readonly>
+        </div>
+        <div class="field">
+          <label>LBP Account Number(optional) <span class="optional-tag">up to 3</span></label>
+          <div id="regAcctList"></div>
+          <p class="field-hint">Leave blank if you don't have one yet. You can add up to three.</p>
+        </div>
+
+        <div class="section-rule"><span>SIGN-IN DETAILS</span></div>
+
+        <div class="field">
+          <label for="regEmail">Email</label>
+          <input type="email" id="regEmail" required placeholder="you@up.edu.ph" autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="regPassword">Password</label>
+          <input type="password" id="regPassword" required data-password-policy placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" autocomplete="new-password">
+        </div>
+        <div class="field">
+          <label for="regConfirmPassword">Confirm password</label>
+          <input type="password" id="regConfirmPassword" required data-password-policy placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" autocomplete="new-password">
+        </div>
+
+        <div class="privacy-ack">
+          <input type="checkbox" id="privacyAck">
+          <label for="privacyAck">
+            I have read the <a href="privacy.html" target="_blank" rel="noopener">Privacy Notice</a>
+            and the <a href="terms.html" target="_blank" rel="noopener">Terms of Use</a>, and I
+            understand how the U.P. System Cash Office will handle my personal data.
+          </label>
+        </div>
+
+        <button type="submit" class="primary" id="regSubmit" disabled>Request Access</button>
+        <p class="gate-hint" id="regGate" aria-live="polite"></p>
+      </form>
+
+      <div class="toggle-row">
+        Already have an account? <a href="index.html">Sign in</a>
+      </div>
+      <p class="footer-note">Secure internal portal &middot; Authorized personnel only<br>
+        <a href="privacy.html">Privacy Notice</a> &middot; <a href="terms.html">Terms of Use</a></p>
+    </div>
+  </div>
+
+  <script src="page-registration.js"></script>
+</body>
+</html>

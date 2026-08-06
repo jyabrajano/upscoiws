@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="robots" content="noindex, nofollow">
+
+<!--
+  privacy.html — the privacy notice required by section 16 of the Data
+  Privacy Act of 2012 (RA 10173), which gives every data subject the
+  right to be informed before their personal data is processed.
+
+  ============================================================
+  THIS DOCUMENT IS A DRAFT AND MUST BE REVIEWED BEFORE LAUNCH
+  ============================================================
+
+  Every {{PLACEHOLDER}} below has to be filled in by the U.P. System
+  Cash Office together with the University Data Protection Office. A
+  privacy notice is a statement of what the University actually does
+  and who is actually accountable; nobody outside the office can supply
+  those facts, and a notice with invented contact details is worse than
+  none because it tells people to write to an address that ignores them.
+
+  The lawful basis stated below is section 12(c)/(e), NOT consent.
+  That is a deliberate choice and should be confirmed rather than
+  quietly changed: this portal exists so staff can be paid and can see
+  what they were paid. Treating that as consent-based would imply an
+  employee could withdraw consent and still expect the service, which
+  is not the arrangement, and would give them a right of withdrawal the
+  University cannot actually honour.
+
+  When the text changes materially, bump PRIVACY_NOTICE_VERSION in
+  config.js. Registration records which version each person
+  acknowledged, so a reissued notice can be re-acknowledged rather than
+  silently replaced.
+
+  Content Security Policy — ON. Keep this identical across all pages.
+  `node sync-csp.js` maintains the connect-src line and checks that no
+  inline script has crept in. This page has no script of its own.
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' https://cdn.jsdelivr.net;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com;
+  img-src 'self' data:;
+  connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co;
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self';
+">
+
+<link rel="icon" type="image/png" href="UPSeal.png">
+<title>Privacy Notice — U.P. System Cash Office</title>
+
+<style>
+  :root {
+    --maroon: #7b1113;
+    --maroon-dark: #5c0d0f;
+    --maroon-soft: rgba(123, 17, 19, 0.08);
+    --white: #ffffff;
+    --yellow: #f5b041;
+    --yellow-soft: #fef9ec;
+    --ink: #1e293b;
+    --muted: #64748b;
+    --bg: #f7f4ef;
+    --card: rgba(255, 255, 255, 0.94);
+    --border: rgba(123, 17, 19, 0.1);
+    --radius-sm: 10px;
+    --radius-xs: 8px;
+    --shadow-lg: 0 12px 40px rgba(92, 13, 15, 0.12), 0 4px 12px rgba(92, 13, 15, 0.06);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.65;
+    padding: 32px 16px 64px;
+  }
+
+  .wrap { max-width: 760px; margin: 0 auto; }
+
+  header.masthead {
+    text-align: center;
+    padding: 24px 20px 28px;
+    background: linear-gradient(135deg, var(--maroon), var(--maroon-dark));
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    color: var(--white);
+  }
+  header.masthead img {
+    width: 72px; height: 72px;
+    object-fit: contain;
+    padding: 6px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 72%);
+  }
+  header.masthead h1 { font-size: 1.28rem; margin-top: 10px; letter-spacing: 0.2px; }
+  header.masthead p { font-size: 0.85rem; opacity: 0.86; margin-top: 4px; }
+
+  main {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    padding: 32px 34px 38px;
+  }
+
+  .draft-banner {
+    background: var(--yellow-soft);
+    border: 1px solid var(--yellow);
+    border-left: 4px solid var(--yellow);
+    border-radius: var(--radius-xs);
+    padding: 14px 16px;
+    margin-bottom: 28px;
+    font-size: 0.88rem;
+  }
+  .draft-banner strong { display: block; margin-bottom: 4px; color: var(--maroon-dark); }
+
+  h2 {
+    font-size: 1.02rem;
+    color: var(--maroon-dark);
+    margin: 28px 0 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  h2:first-of-type { margin-top: 0; }
+
+  p, li { font-size: 0.925rem; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 0 0 14px 22px; }
+  li { margin-bottom: 6px; }
+
+  dl { margin: 0 0 14px; }
+  dt { font-weight: 600; margin-top: 10px; font-size: 0.925rem; }
+  dd { margin-left: 0; font-size: 0.925rem; color: var(--muted); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 6px 0 16px;
+    font-size: 0.88rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th { background: var(--maroon-soft); color: var(--maroon-dark); font-weight: 600; }
+
+  .fill { background: var(--yellow-soft); border-bottom: 1px dashed var(--yellow); padding: 0 3px; }
+
+  .meta {
+    margin-top: 30px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+
+  .back {
+    display: inline-block;
+    margin-top: 22px;
+    color: var(--maroon);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .back:hover { color: var(--maroon-dark); text-decoration: underline; }
+
+  @media (max-width: 560px) {
+    main { padding: 24px 20px 30px; }
+    body { padding: 16px 10px 40px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="masthead">
+    <img src="UPSeal.png" alt="University of the Philippines Seal">
+    <h1>Privacy Notice</h1>
+    <p>U.P. System Cash Office Integrated Web System</p>
+  </header>
+
+  <main>
+    <!-- Remove this banner once the office and the UDPO have filled in
+         and approved the highlighted items. -->
+    <div class="draft-banner">
+      <strong>Draft — pending review</strong>
+      Highlighted items still need to be confirmed by the U.P. System Cash Office and
+      the University Data Protection Office. Do not publish this notice until they have
+      been completed and the notice approved.
+    </div>
+
+    <p>
+      This notice explains how the U.P. System Cash Office collects and handles your
+      personal data in this portal. It is provided under Section 16 of Republic Act
+      No. 10173, the Data Privacy Act of 2012, which gives you the right to be
+      informed before your personal data is processed.
+    </p>
+
+    <h2>Who is responsible for your data</h2>
+    <p>
+      The <strong>University of the Philippines System</strong>, through the
+      U.P. System Cash Office, is the Personal Information Controller for this portal.
+    </p>
+    <dl>
+      <dt>Data Protection Officer</dt>
+      <dd>John-Zel Y. Abrajano</dd>
+      <dt>Email</dt>
+      <dd><a href="mailto:jyabrajano@up.edu.ph">jyabrajano@up.edu.ph</a></dd>
+      <dt>Postal address</dt>
+      <dd><span class="fill">U.P. System Cash Office, {{BUILDING / STREET}}, Quezon City 1105</span></dd>
+      <dt>Cash Office contact for portal questions</dt>
+      <dd><a href="mailto:upcashoffice@up.edu.ph">upcashoffice@up.edu.ph</a></dd>
+    </dl>
+
+    <h2>What we collect</h2>
+    <table>
+      <thead>
+        <tr><th>Data</th><th>Where it comes from</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Your name — first name, middle initial, surname, suffix</td><td>You, at registration</td></tr>
+        <tr><td>Your U.P. email address</td><td>You, at registration or from UP Mail sign-in</td></tr>
+        <tr><td>Your Land Bank account number or numbers</td><td>You, at registration</td></tr>
+        <tr><td>Your password, stored only as a cryptographic hash</td><td>You — the Cash Office never sees it</td></tr>
+        <tr><td>Disbursement records: dates, amounts, DV numbers, cheque details</td><td>Cash Office records, matched to your account numbers</td></tr>
+        <tr><td>Account activity: registration, approval, and change requests</td><td>Generated as you use the portal</td></tr>
+      </tbody>
+    </table>
+    <p>
+      We do not collect sensitive personal information as defined in Section 3(l) of
+      the Act — no government ID numbers, health information, or similar categories.
+    </p>
+
+    <h2>Why we process it</h2>
+    <ul>
+      <li>To confirm you are U.P. personnel entitled to use the portal</li>
+      <li>To show you your own statement of account and no one else's</li>
+      <li>To match disbursement records to the correct payee</li>
+      <li>To keep a record of administrative decisions about accounts</li>
+    </ul>
+
+    <h2>Our legal basis</h2>
+    <p>
+      Processing is carried out under <strong>Section 12(c)</strong> of the Act, as it
+      is necessary to fulfil the University's obligations to you as personnel, and
+      <strong>Section 12(e)</strong>, as it is necessary for a function of a public
+      authority.
+    </p>
+    <p>
+      This is <em>not</em> consent-based processing. We ask you to acknowledge that you
+      have read this notice, but we do not ask for your consent to process the data,
+      because the University cannot pay you and cannot show you what you were paid
+      without doing so. Acknowledging the notice is not a permission you are giving,
+      and withdrawing it would not stop the processing.
+    </p>
+
+    <h2>Who can see your data</h2>
+    <ul>
+      <li><strong>You</strong> — your own profile and your own transactions only.</li>
+      <li><strong>Cash Office administrators</strong> — for approving registrations, reviewing changes, and answering queries.</li>
+      <li><strong>Our service providers</strong> — the portal runs on Supabase, whose servers are in Singapore, and is served from
+          GitHub Pages.
+          They process data on the University's instructions only.</li>
+    </ul>
+    <p>
+      We do not sell your data, and we do not share it with anyone else except where
+      the law requires it.
+    </p>
+
+    <h2>Data stored outside the Philippines</h2>
+    <p>
+      Because our provider's servers are in Singapore, your data is stored outside the
+      country. This is permitted under the Act. The University remains accountable for
+      your data wherever it is held, and requires the provider to protect it to the
+      same standard.
+    </p>
+
+    <h2>How long we keep it</h2>
+    <p><span class="fill">{{RETENTION PERIOD — to be set with the UDPO, consistent with COA record-retention rules for disbursement records}}</span></p>
+    <p>
+      When the period ends, records are securely disposed of or anonymised so that they
+      can no longer identify you.
+    </p>
+
+    <h2>How we protect it</h2>
+    <ul>
+      <li>Encrypted in transit (HTTPS) and at rest</li>
+      <li>Passwords stored only as hashes — never in readable form</li>
+      <li>Access rules enforced by the database itself, so the portal cannot show you another person's records even if asked to</li>
+      <li>Every administrative action recorded in an audit log with who did it and when</li>
+      <li>Administrator powers separated: assigned administrators cannot approve their own account changes</li>
+    </ul>
+
+    <h2>Your rights</h2>
+    <p>Under Sections 16 and 18 of the Act you have the right to:</p>
+    <table>
+      <thead>
+        <tr><th>Right</th><th>How to use it here</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Be informed</td><td>This notice</td></tr>
+        <tr><td>Access your data</td><td><strong>Edit Account → Download a copy of my data</strong></td></tr>
+        <tr><td>Correct inaccurate data</td><td><strong>Edit Account</strong> — changes are reviewed by the Cash Office</td></tr>
+        <tr><td>Data portability</td><td>The download is machine-readable JSON</td></tr>
+        <tr><td>Object to processing</td><td>Contact the Data Protection Officer</td></tr>
+        <tr><td>Erasure or blocking</td><td>Contact the Cash Office. Note that disbursement records may need to be kept under government auditing rules even after your portal account is closed.</td></tr>
+        <tr><td>Damages</td><td>You may claim compensation for damage caused by inaccurate, unlawfully obtained, or unauthorised use of your data</td></tr>
+        <tr><td>Complain</td><td>You may lodge a complaint with the National Privacy Commission — <span class="fill">privacy.gov.ph</span></td></tr>
+      </tbody>
+    </table>
+
+    <h2>If something goes wrong</h2>
+    <p>
+      If a breach occurs that puts your data at risk, we will notify the National
+      Privacy Commission and the people affected within 72 hours of discovering it, as
+      the Act requires.
+    </p>
+
+    <h2>Changes to this notice</h2>
+    <p>
+      If this notice changes in a material way, we will ask you to review and
+      acknowledge the updated version the next time you sign in.
+    </p>
+
+    <div class="meta">
+      Version 2026-08-06 &middot;
+      Effective 6 August 2026 &middot;
+      Reviewed by <span class="fill">{{UDPO REVIEWER}}</span>
+    </div>
+
+    <a class="back" href="index.html">&larr; Back to sign in</a>
+  </main>
+</div>
+
+</body>
+</html>

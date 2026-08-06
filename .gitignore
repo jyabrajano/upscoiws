@@ -1,0 +1,15 @@
+# Never publish these — the repo is public.
+#
+# deploy-schema.sql is the whole database design. Not a key (security
+# lives in the database, not in secrecy) but a free map for anyone
+# poking at the API. Deleting a file later removes it from the site but
+# NOT from git history — add it here before the first `git add`.
+deploy-schema.sql
+sync-csp.js
+email-*.html
+README.md
+LEGAL-COMPLIANCE.md
+DEPLOY.txt
+.DS_Store
+Thumbs.db
+node_modules/

@@ -1,0 +1,66 @@
+# ============================================================
+# U.P. System Cash Office Integrated Web System
+# Apache configuration — cPanel, shared hosting, most VPS setups.
+#
+# Optional. The portal works without this file: every page already
+# carries the same Content-Security-Policy in a <meta> tag. What a
+# real response header adds is frame-ancestors, which <meta> ignores
+# entirely, so this is the only place clickjacking can be refused.
+#
+# On Netlify or Cloudflare Pages this file does nothing — use
+# _headers there instead. Apache blocks .ht* files from being served
+# by default, so leaving it in place on any host is harmless.
+# ============================================================
+
+# ---- security headers ----
+<IfModule mod_headers.c>
+  # Keep connect-src in step with SUPABASE_URL in config.js. If you
+  # change Supabase projects, `node sync-csp.js` updates the seven
+  # pages but NOT this file — change it here by hand.
+  #
+  # script-src has no 'unsafe-inline'. That is deliberate and it is
+  # why the page-*.js files exist. Do not add it back to make an
+  # inline script work; move the script into the page's .js file.
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+
+  Header always set X-Frame-Options "DENY"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+  # Signed-in pages hold someone's name and account numbers. Told to
+  # cache, a shared browser will happily redraw them from disk after
+  # sign-out — the back button becomes a way to read the last
+  # person's statement.
+  <FilesMatch "\.(html)$">
+    Header always set Cache-Control "no-store, must-revalidate"
+  </FilesMatch>
+</IfModule>
+
+# ---- correct types ----
+# A host that serves .js as text/plain will have every page silently
+# do nothing, because a strict CSP refuses to execute it.
+<IfModule mod_mime.c>
+  AddType application/javascript .js
+  AddType image/png             .png
+  AddDefaultCharset UTF-8
+</IfModule>
+
+# ---- don't advertise the directory ----
+<IfModule mod_autoindex.c>
+  Options -Indexes
+</IfModule>
+
+DirectoryIndex index.html
+
+# ---- never serve these, if one is ever uploaded by accident ----
+# deploy-schema.sql holds the entire database design. The email
+# templates are for pasting into Supabase, not for visitors. None of
+# them belong on a web root, and this is the cheap insurance against
+# the day one gets dragged in with everything else.
+<FilesMatch "\.(sql|md|txt|log|bak|old|zip)$">
+  Require all denied
+</FilesMatch>
+<FilesMatch "^(email-|deploy-|sync-|confirm-signup)">
+  Require all denied
+</FilesMatch>

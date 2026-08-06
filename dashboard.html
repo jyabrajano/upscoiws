@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="robots" content="noindex, nofollow">
+
+<!--
+  Content Security Policy — ON.
+
+  It stops injected script from shipping what's typed here to an
+  address that isn't your Supabase project. It does NOT hide the
+  source; nothing served to a browser can be hidden.
+
+  Because it is on, this page no longer works opened straight off
+  disk (file:///...) — 'self' means nothing there and the page will
+  break. Serve it over http(s) to test:
+
+    npx --yes http-server . -p 8080
+
+  Send the same policy as a response header from your host as well
+  (Netlify _headers, Vercel vercel.json, nginx add_header) — a
+  header can also carry frame-ancestors, which a <meta> tag can't.
+
+  Keep this identical across all seven pages. The connect-src line is
+  generated -- run `node sync-csp.js` rather than editing it by hand.
+  If you self-host the Supabase SDK, drop cdn.jsdelivr.net from
+  script-src.
+
+  script-src no longer carries 'unsafe-inline'. That is the whole
+  point of the page-*.js files: every page used to end in a several
+  hundred line inline <script>, and while one of those is on the page
+  the directive has to allow inline script, which is the same
+  permission an injected <script> needs. The directive was there
+  looking like a control and enforcing nothing against the attack it
+  names.
+
+  Two things will silently put that back. Adding an inline <script>
+  block anywhere in the file, and adding an onclick= (or any on*=)
+  attribute to any element -- CSP treats a handler attribute as inline
+  script, and neither a nonce nor a hash exempts it. Both fail closed:
+  the code simply does not run, and the browser console says so.
+  Attach a listener in the page's .js file instead.
+
+  style-src does still carry 'unsafe-inline', deliberately and
+  separately. Every page holds a large inline <style> block, and
+  config.js builds one more at runtime for the password toggles.
+  Removing it there is its own piece of work and buys much less --
+  inline style is not a script execution primitive.
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' https://cdn.jsdelivr.net;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com;
+  img-src 'self' data:;
+  connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co;
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self';
+">
+<title>U.P. System Cash Office Integrated Web System</title>
+<link rel="icon" type="image/png" href="UPSeal.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="sheets-config.js"></script>
+<script src="approval.js"></script>
+<style>
+  :root {
+    --maroon: #7b1113;
+    --maroon-dark: #5c0d0f;
+    --maroon-soft: rgba(123, 17, 19, 0.08);
+    --maroon-glow: rgba(123, 17, 19, 0.22);
+    --white: #ffffff;
+    --yellow: #f5b041;
+    --yellow-soft: #fef9ec;
+    --yellow-glow: rgba(245, 176, 65, 0.35);
+    --ink: #1e293b;
+    --muted: #64748b;
+    --bg: #f7f4ef;
+    --card: rgba(255, 255, 255, 0.94);
+    --card-border: rgba(123, 17, 19, 0.1);
+    --surface: rgba(123, 17, 19, 0.04);
+
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-xs: 8px;
+    --shadow-sm: 0 1px 2px rgba(92, 13, 15, 0.05);
+    --shadow-md: 0 4px 12px rgba(92, 13, 15, 0.08), 0 1px 3px rgba(92, 13, 15, 0.04);
+    --shadow-lg: 0 12px 40px rgba(92, 13, 15, 0.12), 0 4px 12px rgba(92, 13, 15, 0.06);
+    --shadow-btn: 0 2px 8px rgba(123, 17, 19, 0.28);
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  }
+
+  * { box-sizing: border-box; }
+
+  /* --- BODY WITH ENHANCED COLOR DESIGN --- */
+  body {
+    margin: 0;
+    font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    border-top: 4px solid var(--maroon);
+    background-image:
+      radial-gradient(ellipse 90% 60% at 5% 0%, rgba(123, 17, 19, 0.09) 0%, transparent 55%),
+      radial-gradient(ellipse 70% 50% at 100% 10%, rgba(245, 176, 65, 0.14) 0%, transparent 50%),
+      radial-gradient(ellipse 80% 40% at 50% 100%, rgba(123, 17, 19, 0.06) 0%, transparent 55%),
+      linear-gradient(180deg, #faf7f2 0%, #f3ebe0 100%);
+    background-attachment: fixed;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(123, 17, 19, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(123, 17, 19, 0.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* --- MAIN HEADER (Matching SOA.html) --- */
+  nav {
+    position: relative;
+    z-index: 10;
+    background: linear-gradient(135deg, #4a090a 0%, var(--maroon-dark) 35%, var(--maroon) 70%, #911518 100%);
+    padding: 14px 32px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 4px 24px rgba(92, 13, 15, 0.32), inset 0 -1px 0 rgba(245, 176, 65, 0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+    border-top: 3px solid var(--yellow);
+    border-bottom: 1px solid rgba(245, 176, 65, 0.4);
+  }
+  nav .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+  }
+  nav .brand img {
+    width: 60px;
+    height: 60px;
+    flex-shrink: 0;
+    object-fit: contain;
+    padding: 4px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0) 72%);
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
+  }
+  nav .brand-text { min-width: 0; }
+  nav h1 {
+    margin: 0;
+    font-size: 16px;
+    letter-spacing: 0.4px;
+    font-weight: 800;
+    line-height: 1.3;
+    white-space: nowrap;
+    background: linear-gradient(180deg, #ffffff 0%, #fde68a 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+  }
+  nav .brand-text p {
+    margin: 3px 0 0;
+    font-size: 10.5px;
+    color: rgba(255,255,255,0.7);
+    font-family: "JetBrains Mono", monospace;
+    text-transform: uppercase;
+    letter-spacing: 1.6px;
+  }
+  nav .links { display: flex; gap: 20px; align-items: center; }
+  nav a {
+    color: rgba(255,255,255,0.88);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: color 0.2s var(--ease), text-shadow 0.2s var(--ease);
+  }
+  nav a:hover {
+    color: var(--yellow);
+    text-shadow: 0 0 12px var(--yellow-glow);
+  }
+  nav .logout {
+    background: linear-gradient(135deg, var(--yellow), #e09a2e);
+    color: var(--maroon-dark);
+    padding: 8px 18px;
+    border-radius: var(--radius-xs);
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    font-size: 13.5px;
+    box-shadow: 0 2px 12px rgba(245, 176, 65, 0.4);
+    transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  }
+  nav .logout:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 18px rgba(245, 176, 65, 0.5);
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 20px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  @media (min-width: 800px) {
+    .wrap { grid-template-columns: 2fr 1fr; }}
+
+  .card {
+    background: var(--card);
+    backdrop-filter: blur(24px) saturate(1.2);
+    -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    border-radius: 16px;
+    padding: 26px;
+    border: 1px solid var(--card-border);
+    box-shadow:
+      var(--shadow-md),
+      inset 0 1px 0 rgba(255, 255, 255, 0.95);
+    transition: border-color 0.25s var(--ease), box-shadow 0.25s var(--ease), transform 0.25s var(--ease);
+  }
+  .card:hover {
+    border-color: rgba(245, 176, 65, 0.45);
+    box-shadow:
+      0 8px 24px rgba(123, 17, 19, 0.1),
+      0 0 0 1px rgba(245, 176, 65, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 1);
+    transform: translateY(-1px);
+  }
+
+  .identity-card {
+    grid-column: 1 / -1;
+    border-top: 4px solid var(--yellow);
+    background: linear-gradient(145deg, rgba(123, 17, 19, 0.06) 0%, var(--card) 50%);
+    position: relative;
+    overflow: hidden;
+  }
+  .identity-card::after {
+    content: "";
+    position: absolute;
+    top: -40%;
+    right: -10%;
+    width: 280px;
+    height: 280px;
+    background: radial-gradient(circle, var(--yellow-glow) 0%, transparent 70%);
+    pointer-events: none;
+    opacity: 0.45;
+  }
+  .identity-label {
+    font-family: "JetBrains Mono", monospace;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-size: 11px;
+    color: var(--maroon);
+    font-weight: 600;
+  }
+  .identity-name {
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--maroon);
+    margin: 10px 0 6px;
+    letter-spacing: -0.8px;
+    font-family: "JetBrains Mono", monospace;
+    line-height: 1.15;
+  }
+  .identity-sub {
+    font-size: 13.5px;
+    color: var(--muted);
+  }
+
+  h2.section-title {
+    font-size: 13px;
+    font-weight: 700;
+    margin: 0 0 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(123, 17, 19, 0.1);
+    color: var(--maroon);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h2.section-title::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    background: var(--yellow);
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(245, 176, 65, 0.25);
+  }
+
+  .news-item {
+    padding: 14px 16px;
+    background: var(--surface);
+    border-left: 3px solid var(--yellow);
+    border-radius: var(--radius-sm);
+    margin-bottom: 12px;
+    transition: background 0.2s var(--ease), transform 0.2s var(--ease);
+  }
+  .news-item:hover {
+    background: rgba(245, 176, 65, 0.1);
+    transform: translateX(2px);
+  }
+  .news-item h3 {
+    margin: 0;
+    font-size: 14.5px;
+    color: var(--ink);
+  }
+  .news-item p {
+    margin: 6px 0 0;
+    font-size: 13.5px;
+    color: var(--muted);
+  }
+
+  /* Interactive Calendar Styles */
+  .cal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .cal-header h3 {
+    margin: 0;
+    font-size: 14.5px;
+    color: var(--maroon);
+    font-weight: 700;
+  }
+  .cal-header button {
+    background: var(--surface);
+    border: 1px solid var(--card-border);
+    color: var(--maroon);
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.2s var(--ease);
+  }
+  .cal-header button:hover {
+    background: rgba(245, 176, 65, 0.2);
+  }
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    text-align: center;
+  }
+  .cal-day-name {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    padding-bottom: 6px;
+    text-transform: uppercase;
+  }
+  .cal-cell {
+    padding: 8px 4px;
+    font-size: 12.5px;
+    border-radius: var(--radius-xs);
+    background: rgba(123, 17, 19, 0.02);
+    min-height: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    cursor: default;
+    position: relative;
+  }
+  .cal-cell.today {
+    border: 1.5px solid var(--yellow);
+    font-weight: 700;
+  }
+  .cal-cell.has-event {
+    background: var(--yellow-soft);
+    cursor: pointer;
+    transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  }
+  .cal-cell.has-event:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(245, 176, 65, 0.3);
+  }
+  .event-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--maroon);
+    border-radius: 50%;
+    margin-top: 4px;
+  }
+  .cal-details {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px dashed rgba(123, 17, 19, 0.15);
+    font-size: 13px;
+  }
+
+  .cal-cell.admin-addable {
+    cursor: pointer;
+    transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s var(--ease);
+  }
+  .cal-cell.admin-addable:hover {
+    background: rgba(123, 17, 19, 0.06);
+    transform: translateY(-2px);
+  }
+
+  .event-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .event-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 10px;
+    background: var(--surface);
+    border-radius: var(--radius-xs);
+  }
+  .event-list-title {
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .event-del-btn {
+    background: none;
+    border: none;
+    color: var(--debit, #b91c1c);
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 2px 6px;
+    flex-shrink: 0;
+  }
+  .event-del-btn:hover { text-decoration: underline; }
+  .event-del-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .add-event-form {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .add-event-form input {
+    flex: 1;
+    border: 1.5px solid #e2e8f0;
+    border-radius: var(--radius-xs);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--ink);
+  }
+  .add-event-form input:focus {
+    outline: none;
+    border-color: var(--maroon);
+    box-shadow: 0 0 0 3px var(--maroon-soft);
+  }
+  .add-event-form button {
+    background: linear-gradient(135deg, var(--maroon), var(--maroon-dark));
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-xs);
+    padding: 0 14px;
+    font-weight: 700;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .add-event-form button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .loading, .empty {
+    color: var(--muted);
+    font-size: 13.5px;
+    font-style: italic;
+  }
+
+  /* --- UPDATED TABLE STYLE MATCHING SOA.HTML --- */
+  .available-card {
+    grid-column: 1 / -1;
+    overflow-x: auto;
+  }
+  .available-card table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: 760px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(123, 17, 19, 0.1);
+    box-shadow: var(--shadow-sm);
+  }
+  .available-card thead {
+    background: linear-gradient(135deg, var(--maroon-dark) 0%, var(--maroon) 100%);
+  }
+  .available-card thead th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: #ffffff;
+    border-bottom: 2px solid var(--yellow);
+    padding: 13px 16px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .available-card thead th.right { text-align: right; }
+  .available-card thead th.center { text-align: center; }
+  .available-card tbody td {
+    padding: 13px 16px;
+    border-bottom: 1px solid rgba(123, 17, 19, 0.06);
+    font-size: 13px;
+    white-space: nowrap;
+    background: rgba(255, 255, 255, 0.7);
+    transition: background 0.15s var(--ease);
+  }
+  .available-card tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .available-card tbody tr:nth-child(even) td {
+    background: rgba(123, 17, 19, 0.02);
+  }
+  .available-card tbody tr:hover td {
+    background: rgba(245, 176, 65, 0.12);
+  }
+  .available-card .amt-right {
+    text-align: right;
+    font-weight: 700;
+    font-family: "JetBrains Mono", monospace;
+    color: var(--maroon-dark);
+  }
+  .available-card .status-center { text-align: center; }
+  .available-card .status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    background: var(--yellow-soft);
+    color: #854d0e;
+    border: 1px solid #fde68a;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .ai-launcher {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, var(--maroon), var(--maroon-dark));
+    border: 2px solid var(--yellow);
+    color: var(--white);
+    cursor: pointer;
+    box-shadow:
+      0 6px 20px var(--maroon-glow),
+      0 0 10px var(--yellow-glow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 40;
+    transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  }
+  .ai-launcher:hover {
+    transform: scale(1.08);
+    box-shadow:
+      0 8px 28px var(--maroon-glow),
+      0 0 16px var(--yellow-glow);
+  }
+  .ai-launcher svg { width: 24px; height: 24px; }
+
+  .ai-widget {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 340px;
+    max-width: calc(100vw - 40px);
+    height: 480px;
+    max-height: calc(100vh - 48px);
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(24px) saturate(1.2);
+    -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    border-radius: 16px;
+    box-shadow:
+      0 24px 48px rgba(123, 17, 19, 0.18),
+      0 0 0 1px rgba(123, 17, 19, 0.1);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 41;
+  }
+  .ai-widget.open { display: flex; }
+
+  .ai-header {
+    background: linear-gradient(90deg, var(--maroon-dark), var(--maroon));
+    color: var(--white);
+    padding: 14px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 700;
+    font-size: 14.5px;
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(245, 176, 65, 0.3);
+  }
+  .ai-header span.dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--yellow);
+    margin-right: 8px;
+    box-shadow: 0 0 10px var(--yellow);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+  .ai-header button {
+    background: none;
+    border: none;
+    color: var(--white);
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 4px;
+    opacity: 0.85;
+    transition: opacity 0.15s;
+  }
+  .ai-header button:hover { opacity: 1; }
+
+  .ai-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    background: #fbfaf7;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ai-msg {
+    font-size: 13.5px;
+    line-height: 1.5;
+    padding: 10px 14px;
+    border-radius: 12px;
+    max-width: 85%;
+    white-space: pre-wrap;
+  }
+  .ai-msg.assistant {
+    background: var(--yellow-soft);
+    color: var(--ink);
+    border: 1px solid #fde8bd;
+    align-self: flex-start;
+    border-bottom-left-radius: 3px;
+  }
+  .ai-msg.user {
+    background: linear-gradient(135deg, var(--maroon), var(--maroon-dark));
+    color: var(--white);
+    align-self: flex-end;
+    border-bottom-right-radius: 3px;
+    box-shadow: 0 2px 12px var(--maroon-glow);
+  }
+  .ai-msg.typing {
+    color: var(--muted);
+    font-style: italic;
+    background: transparent;
+    border: none;
+    padding: 0 4px;
+  }
+
+  .ai-input-row {
+    display: flex;
+    border-top: 1px solid rgba(123, 17, 19, 0.1);
+    padding: 12px;
+    gap: 8px;
+    flex-shrink: 0;
+    background: var(--white);
+  }
+  .ai-input-row input {
+    flex: 1;
+    border: 1.5px solid #e2e8f0;
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 13.5px;
+    font-family: inherit;
+    background: #fff;
+    color: var(--ink);
+    transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  }
+  .ai-input-row input::placeholder { color: var(--muted); }
+  .ai-input-row input:focus {
+    outline: none;
+    border-color: var(--maroon);
+    box-shadow: 0 0 0 3px var(--maroon-soft);
+  }
+  .ai-input-row button {
+    background: linear-gradient(135deg, var(--maroon), var(--maroon-dark));
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 0 18px;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    transition: box-shadow 0.2s, transform 0.15s;
+  }
+  .ai-input-row button:hover:not(:disabled) {
+    box-shadow: var(--shadow-btn);
+  }
+  .ai-input-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .ai-disclaimer {
+    font-size: 10.5px;
+    color: var(--muted);
+    text-align: center;
+    padding: 6px 10px 10px;
+    background: #faf8f5;
+  }
+
+  /* --- Profile menu --- */
+  .profile-menu { position: relative; }
+  .profile-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(245, 176, 65, 0.3);
+    color: var(--white);
+    padding: 6px 12px 6px 6px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+  }
+  .profile-btn:hover {
+    background: rgba(255,255,255,0.16);
+    border-color: var(--yellow);
+  }
+  .profile-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--yellow), #e09a2e);
+    color: var(--maroon-dark);
+    font-weight: 700;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .profile-name {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .profile-btn .chev { transition: transform 0.2s; flex-shrink: 0; }
+  .profile-menu.open .profile-btn .chev { transform: rotate(180deg); }
+
+  .profile-dropdown {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 240px;
+    background: var(--card);
+    backdrop-filter: blur(24px) saturate(1.2);
+    -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    box-shadow: var(--shadow-lg), 0 0 0 1px rgba(123,17,19,0.06);
+    padding: 8px;
+    display: none;
+    z-index: 50;
+  }
+  .profile-menu.open .profile-dropdown { display: block; }
+
+  .profile-dropdown-header {
+    padding: 10px 12px 12px;
+    border-bottom: 1px solid rgba(123, 17, 19, 0.1);
+    margin-bottom: 6px;
+  }
+  .profile-dropdown-name { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+  .profile-dropdown-email {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .profile-dropdown-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 10px 12px;
+    border-radius: var(--radius-xs);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .profile-dropdown-item:hover { background: var(--surface); }
+  .profile-dropdown-item.danger { color: #b91c1c; }
+  .profile-dropdown-item.danger:hover { background: #fef2f2; }
+  .modal-overlay.open { display: flex; }
+
+  .modal-body .field { margin-bottom: 16px; }
+  #editFullName {
+    text-transform: uppercase;
+    background-color: #f1f5f9;
+    color: var(--muted);
+    border-color: #cbd5e1;
+    cursor: not-allowed;
+  }
+  #editFullName:focus { border-color: #cbd5e1; box-shadow: none; }
+
+  .modal-body .field label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+  .modal-body .field input {
+    width: 100%;
+    padding: 11px 13px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--ink);
+    background: #fff;
+    transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  }
+  .modal-body .field input:focus {
+    outline: none;
+    border-color: var(--maroon);
+    box-shadow: 0 0 0 3px var(--maroon-soft);
+  }
+  .modal-body .field input:disabled {
+    background: #f3f4f6;
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+
+  #profileStatus.status {
+    font-size: 13px;
+    padding: 10px 13px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 16px;
+    display: none;
+    line-height: 1.4;
+  }
+  #profileStatus.status.error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+  #profileStatus.status.success { background: var(--yellow-soft); color: #854d0e; border: 1px solid #fde68a; }
+  #profileStatus.status.visible { display: block; }</style>
+</head>
+<body>
+  <nav>
+    <div class="brand">
+      <img src="UPSeal.png" alt="University of the Philippines Seal">
+      <div class="brand-text">
+        <h1>U.P. System Cash Office</h1>
+        <p>Integrated Web System</p>
+      </div>
+    </div>
+    <div class="links">
+      <a href="dashboard.html" style="color: var(--yellow); font-weight:700;">Home</a>
+      <a href="soa.html">Transaction History</a>
+      <a href="users.html" id="usersLink" style="display:none;">Manage Users</a>
+      <div class="profile-menu" id="profileMenu">
+        <button type="button" class="profile-btn" id="profileBtn" aria-haspopup="true" aria-expanded="false">
+          <span class="profile-avatar" id="profileAvatar">?</span>
+          <span class="profile-name" id="profileNameLabel">Account</span>
+          <svg class="chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div class="profile-dropdown" id="profileDropdown">
+          <div class="profile-dropdown-header">
+            <div class="profile-dropdown-name" id="ddName">Loading…</div>
+            <div class="profile-dropdown-email" id="ddEmail"></div>
+          </div>
+          <a class="profile-dropdown-item" href="editaccount.html">Edit Account</a>
+          <button type="button" class="profile-dropdown-item danger" id="logoutBtn">Logout</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Edit Profile Modal -->
+  <div class="wrap">
+    <div class="card identity-card">
+      <div class="identity-label">[S.C.O.I.W.S] User:</div>
+      <div class="identity-name" id="identityName">Loading…</div>
+      <div class="identity-sub" id="acctSub"></div>
+    </div>
+
+    <!-- ADMIN SECTION -->
+    <div id="adminSection" style="display:none;">
+      <div class="card admin-card">
+        <h2 class="section-title">
+          Account Registrations
+          <span class="queue-count" id="regCount">0</span>
+        </h2>
+        <div id="regQueue"></div>
+      </div>
+
+      <div class="card admin-card">
+        <h2 class="section-title">
+          Name &amp; Account Number Changes
+          <span class="queue-count" id="changeCount">0</span>
+        </h2>
+        <div id="changeQueue"></div>
+      </div>
+
+      <div class="card admin-card">
+        <h2 class="section-title">Administrators</h2>
+        <div id="adminManager"></div>
+      </div>
+    </div>
+
+    <div class="card available-card" id="availableCard">
+      <h2 class="section-title">Available Checks for you.</h2>
+      <table>
+        <thead>
+          <tr>
+            <th class="center">Status</th>
+            <th>Date</th>
+            <th>Check#</th>
+            <th>Name</th>
+            <th class="right">Amount</th>
+            <th>Description/Unit</th>
+            <th>Span</th>
+          </tr>
+        </thead>
+        <tbody id="availableBody">
+          <tr><td colspan="7" class="empty">Loading transactions…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">News & Updates</h2>
+      <div id="newsList"><p class="loading">Loading news…</p></div>
+    </div>
+
+    <!-- Interactive Calendar Card -->
+    <div class="card">
+      <h2 class="section-title">Upcoming Dates</h2>
+      <div class="cal-header">
+        <button id="prevMonth" aria-label="Previous Month">&larr;</button>
+        <h3 id="currentMonthYear">Loading...</h3>
+        <button id="nextMonth" aria-label="Next Month">&rarr;</button>
+      </div>
+      <div class="cal-grid" id="calGrid">
+        <p class="loading" style="grid-column: 1 / -1;">Loading calendar…</p>
+      </div>
+      <div class="cal-details" id="calDetails">
+        <span class="empty">Click a highlighted date to view scheduled events.</span>
+      </div>
+    </div>
+  </div>
+
+  <button class="ai-launcher" id="aiLauncher" aria-label="Open assistant">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+    </svg>
+  </button>
+
+  <div class="ai-widget" id="aiWidget">
+    <div class="ai-header">
+      <span><span class="dot"></span>SCOIWS ADELLE - AI Assistant</span>
+      <button id="aiClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="ai-body" id="aiBody">
+      <div class="ai-msg assistant">Hi! I can answer questions about payments you've received from the U.P. System. What would you like to know?</div>
+    </div>
+    <div class="ai-input-row">
+      <input type="text" id="aiInput" placeholder="Ask about your payments…" maxlength="500">
+      <button id="aiSend">Send</button>
+    </div>
+    <div class="ai-disclaimer">Except financial advice. You can't move money or change your account in this AI feature.</div>
+  </div>
+
+  <script src="page-dashboard.js"></script>
+</body>
+</html>

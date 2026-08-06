@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="robots" content="noindex, nofollow">
+
+<!--
+  terms.html — Terms of Use for the portal.
+
+  ============================================================
+  THIS DOCUMENT IS A DRAFT AND MUST BE REVIEWED BEFORE LAUNCH
+  ============================================================
+
+  Every {{PLACEHOLDER}} must be completed by the U.P. System Cash
+  Office with the Office of Legal Services and the University Data
+  Protection Office. Nobody outside the University can supply which
+  internal policies apply or what the disciplinary route is, and terms
+  that cite a policy which does not exist are unenforceable and
+  embarrassing.
+
+  ---- On the Bank Secrecy Law, and why it is worded the way it is ----
+
+  RA 1405 (Secrecy of Bank Deposits, 1955) binds BANKS. Section 3 makes
+  it unlawful for an official or employee of a BANKING INSTITUTION to
+  disclose information concerning deposits, and its subject matter is
+  "deposits of whatever nature with banks" -- balances, deposit
+  activity, the money itself.
+
+  The University is not a banking institution, and this portal holds
+  neither balances nor deposit information. It holds account NUMBERS
+  and records of what the University disbursed. So RA 1405 does not
+  bind the Cash Office directly, and a terms page claiming otherwise
+  would be stating law incorrectly -- which is worse than saying
+  nothing, because it invites someone to rely on a protection that is
+  not actually the operative one.
+
+  What IS true, and is what section 5 below says:
+    - the LBP accounts these numbers point to ARE protected by RA 1405,
+      as against the bank;
+    - the University's own duty of confidentiality comes from RA 10173
+      (Data Privacy Act) and RA 6713 s.7(c) (Code of Conduct and
+      Ethical Standards for Public Officials and Employees), which
+      prohibits public officials from disclosing confidential
+      information acquired in office;
+    - and Article 229 of the Revised Penal Code covers revelation of
+      secrets by a public officer.
+
+  Have Legal Services confirm this framing. It is written to be
+  accurate rather than impressive, and if they prefer a different
+  citation the reasoning above is what to argue against.
+
+  Content Security Policy — ON. Keep identical across all pages.
+  `node sync-csp.js` maintains connect-src and checks for inline
+  script. This page has no script of its own.
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' https://cdn.jsdelivr.net;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com;
+  img-src 'self' data:;
+  connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co;
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self';
+">
+
+<link rel="icon" type="image/png" href="UPSeal.png">
+<title>Terms of Use — U.P. System Cash Office</title>
+
+<style>
+  :root {
+    --maroon: #7b1113;
+    --maroon-dark: #5c0d0f;
+    --maroon-soft: rgba(123, 17, 19, 0.08);
+    --white: #ffffff;
+    --yellow: #f5b041;
+    --yellow-soft: #fef9ec;
+    --ink: #1e293b;
+    --muted: #64748b;
+    --bg: #f7f4ef;
+    --card: rgba(255, 255, 255, 0.94);
+    --border: rgba(123, 17, 19, 0.1);
+    --radius-sm: 10px;
+    --radius-xs: 8px;
+    --shadow-lg: 0 12px 40px rgba(92, 13, 15, 0.12), 0 4px 12px rgba(92, 13, 15, 0.06);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.65;
+    padding: 32px 16px 64px;
+  }
+
+  .wrap { max-width: 760px; margin: 0 auto; }
+
+  header.masthead {
+    text-align: center;
+    padding: 24px 20px 28px;
+    background: linear-gradient(135deg, var(--maroon), var(--maroon-dark));
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    color: var(--white);
+  }
+  header.masthead img {
+    width: 72px; height: 72px;
+    object-fit: contain;
+    padding: 6px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 72%);
+  }
+  header.masthead h1 { font-size: 1.28rem; margin-top: 10px; letter-spacing: 0.2px; }
+  header.masthead p { font-size: 0.85rem; opacity: 0.86; margin-top: 4px; }
+
+  main {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    padding: 32px 34px 38px;
+  }
+
+  .draft-banner {
+    background: var(--yellow-soft);
+    border: 1px solid var(--yellow);
+    border-left: 4px solid var(--yellow);
+    border-radius: var(--radius-xs);
+    padding: 14px 16px;
+    margin-bottom: 28px;
+    font-size: 0.88rem;
+  }
+  .draft-banner strong { display: block; margin-bottom: 4px; color: var(--maroon-dark); }
+
+  h2 {
+    font-size: 1.02rem;
+    color: var(--maroon-dark);
+    margin: 28px 0 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  h2:first-of-type { margin-top: 0; }
+  h2 .num { opacity: 0.5; margin-right: 7px; font-variant-numeric: tabular-nums; }
+
+  p, li { font-size: 0.925rem; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 0 0 14px 22px; }
+  li { margin-bottom: 6px; }
+
+  .callout {
+    background: var(--maroon-soft);
+    border-left: 3px solid var(--maroon);
+    border-radius: var(--radius-xs);
+    padding: 13px 15px;
+    margin: 6px 0 16px;
+    font-size: 0.89rem;
+  }
+
+  .fill { background: var(--yellow-soft); border-bottom: 1px dashed var(--yellow); padding: 0 3px; }
+
+  a { color: var(--maroon); font-weight: 600; }
+  a:hover { color: var(--maroon-dark); }
+
+  .meta {
+    margin-top: 30px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+
+  .back {
+    display: inline-block;
+    margin-top: 22px;
+    font-size: 0.9rem;
+    text-decoration: none;
+  }
+  .back:hover { text-decoration: underline; }
+
+  @media (max-width: 560px) {
+    main { padding: 24px 20px 30px; }
+    body { padding: 16px 10px 40px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="masthead">
+    <img src="UPSeal.png" alt="University of the Philippines Seal">
+    <h1>Terms of Use</h1>
+    <p>U.P. System Cash Office Integrated Web System</p>
+  </header>
+
+  <main>
+    <!-- Remove once the office, Legal Services and the UDPO have
+         completed and approved the highlighted items. -->
+    <div class="draft-banner">
+      <strong>Draft — pending review</strong>
+      Highlighted items still need to be confirmed by the U.P. System Cash Office, the
+      Office of Legal Services, and the University Data Protection Office. Do not
+      publish these terms until they have been completed and approved.
+    </div>
+
+    <p>
+      These terms cover how you may use this portal. They sit alongside the
+      <a href="privacy.html">Privacy Notice</a>, which explains how your personal data
+      is handled. Using the portal means these terms apply to you.
+    </p>
+
+    <h2><span class="num">1.</span>Who may use this portal</h2>
+    <p>
+      Access is limited to U.P. personnel with a legitimate reason to view their own
+      disbursement records, and to Cash Office staff authorised to administer it.
+      Registering does not grant access — an administrator must approve your account
+      first, and approval may be declined or withdrawn.
+    </p>
+
+    <h2><span class="num">2.</span>Your account is yours alone</h2>
+    <ul>
+      <li>Do not share your password, and do not let anyone else use your account.</li>
+      <li>Do not sign in on behalf of a colleague, even at their request or to help them.</li>
+      <li>Sign out when using a shared or public computer.</li>
+      <li>Tell the Cash Office promptly if you think someone else has used your account.</li>
+    </ul>
+    <p>
+      Actions taken through your account are recorded against you. If you have shared it,
+      you have no way to show that something was not you.
+    </p>
+
+    <h2><span class="num">3.</span>What you may and may not do</h2>
+    <p>You may use the portal to view your own records, correct your own details, and download a copy of your own data.</p>
+    <p>You must not:</p>
+    <ul>
+      <li>Attempt to view, obtain or infer another person's records</li>
+      <li>Probe, scan or test the portal's security, or try to bypass its access controls</li>
+      <li>Use automated tools to extract data in bulk</li>
+      <li>Copy, forward or publish records belonging to anyone else</li>
+      <li>Misrepresent your identity or submit account details that are not yours</li>
+    </ul>
+
+    <h2><span class="num">4.</span>Your own records are still confidential</h2>
+    <p>
+      The portal shows you your own disbursement history, including amounts and the
+      account numbers they were paid into. Treat it as confidential. Screenshots
+      circulated in group chats, forwarded statements, and printouts left on shared
+      printers are the most common ways this kind of information gets out.
+    </p>
+
+    <h2><span class="num">5.</span>Bank account information</h2>
+    <p>
+      Your Land Bank account number is stored so the Cash Office can match disbursement
+      records to the right person. The portal does <strong>not</strong> hold your
+      balance, your deposits, or any other information about the account itself, and it
+      cannot be used to look those up.
+    </p>
+    <div class="callout">
+      <strong>Republic Act No. 1405 — Secrecy of Bank Deposits.</strong>
+      Your deposits with Land Bank are absolutely confidential under RA 1405, and may
+      not be examined or disclosed except in the narrow circumstances the law allows —
+      your written permission, impeachment proceedings, a court order in cases of
+      bribery or dereliction of duty by a public official, or where the deposit is
+      itself the subject of litigation. That protection binds the bank. The Cash Office
+      is not a banking institution and holds no deposit information, so it has nothing
+      of that kind to disclose.
+    </div>
+    <p>
+      The Cash Office's own duty of confidentiality over what it <em>does</em> hold
+      comes from <strong>Republic Act No. 10173</strong> (Data Privacy Act of 2012) and
+      <strong>Republic Act No. 6713</strong>, section 7(c) (Code of Conduct and Ethical
+      Standards for Public Officials and Employees), which prohibits public officials
+      and employees from disclosing confidential information acquired in the course of
+      their duties. Unauthorised disclosure may also fall under Article 229 of the
+      Revised Penal Code.
+    </p>
+    <p>
+      If you obtain another person's account number through this portal — whether by
+      accident, by error, or otherwise — do not record it, act on it, or pass it on.
+      Report it to the Cash Office.
+    </p>
+
+    <h2><span class="num">6.</span>Administrators</h2>
+    <p>
+      Administrators can see other users' details in order to approve registrations and
+      review account changes. If you are an administrator:
+    </p>
+    <ul>
+      <li>Look at a record only when there is a task that requires it</li>
+      <li>Every action you take is logged with your name, the person affected, and the time</li>
+      <li>You cannot approve your own account changes — ask another administrator</li>
+      <li>Browsing records out of curiosity is a disclosure offence, not a minor lapse</li>
+    </ul>
+
+    <h2><span class="num">7.</span>Accuracy of what you submit</h2>
+    <p>
+      You are responsible for the details you enter, particularly your account numbers.
+      A wrong number may mean a disbursement cannot be matched to you, or is matched to
+      someone else. Changes are reviewed by the Cash Office before taking effect, but
+      review is not verification against your bank records.
+    </p>
+
+    <h2><span class="num">8.</span>Availability</h2>
+    <p>
+      The portal is provided as it is. It may be unavailable for maintenance or for
+      reasons outside the University's control. It is a convenience for viewing records,
+      not the official record itself —
+      <span class="fill">{{THE OFFICIAL RECORD REMAINS: to be stated by the Cash Office}}</span>
+      prevails in any discrepancy.
+    </p>
+
+    <h2><span class="num">9.</span>Suspension and misuse</h2>
+    <p>
+      Access may be suspended or withdrawn where these terms are breached, where an
+      account appears compromised, or where you no longer need access. Misuse may also
+      be dealt with under
+      <span class="fill">{{UP'S ICT ACCEPTABLE USE POLICY — exact title and reference}}</span>
+      and the University's disciplinary rules, and serious cases may carry liability
+      under the Data Privacy Act, RA 6713, or the Revised Penal Code.
+    </p>
+
+    <h2><span class="num">10.</span>Changes to these terms</h2>
+    <p>
+      If these terms change in a material way, you will be asked to review and
+      acknowledge the updated version the next time you sign in.
+    </p>
+
+    <h2><span class="num">11.</span>Questions</h2>
+    <p>
+      About the portal or your records —
+      <a href="mailto:upcashoffice@up.edu.ph">upcashoffice@up.edu.ph</a>.
+      About your personal data or your rights under the Data Privacy Act —
+      the Data Protection Officer, listed in the
+      <a href="privacy.html">Privacy Notice</a>.
+    </p>
+
+    <div class="meta">
+      Version 2026-08-06 &middot;
+      Effective 6 August 2026 &middot;
+      Reviewed by <span class="fill">{{LEGAL SERVICES / UDPO REVIEWER}}</span>
+    </div>
+
+    <a class="back" href="index.html">&larr; Back to sign in</a>
+  </main>
+</div>
+
+</body>
+</html>
