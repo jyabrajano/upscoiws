@@ -1,0 +1,81 @@
+# ============================================================
+# U.P. System Cash Office Integrated Web System
+#
+# This is an internal portal for authorized personnel. Nothing here
+# should appear in a search result: the sign-in page is a phishing
+# template if it is copied, the registration page collects names and
+# LBP account numbers, and neither is useful to anyone who arrived
+# from a search engine rather than from the Cash Office.
+#
+# This file is a request, not a control. It is honoured by the major
+# crawlers and ignored by anything hostile — the enforcement is
+# X-Robots-Tag in vercel.json plus the <meta name="robots"> tag on
+# each page. Treat all three as the same decision written down in the
+# three places that each catch a different reader.
+# ============================================================
+
+User-agent: *
+Disallow: /
+
+# ---- link-preview bots ----
+# These are NOT indexers. They fetch a page once so a pasted link
+# unfurls with a title and a seal instead of a bare URL, which is what
+# staff actually see when the portal is shared over Messenger, Viber
+# or Teams.
+#
+# They matter here because most of them honour robots.txt: left under
+# the blanket Disallow above, the Open Graph tags in index.html would
+# be correct and never read. Only the root is opened to them — the
+# signed-in pages stay closed, since there is nothing to preview
+# behind an authentication wall anyway.
+
+User-agent: facebookexternalhit
+Allow: /$
+Allow: /index.html
+Allow: /UPSeal.png
+Disallow: /
+
+User-agent: Twitterbot
+Allow: /$
+Allow: /index.html
+Allow: /UPSeal.png
+Disallow: /
+
+User-agent: Slackbot-LinkExpanding
+Allow: /$
+Allow: /index.html
+Allow: /UPSeal.png
+Disallow: /
+
+User-agent: Slackbot
+Allow: /$
+Allow: /index.html
+Allow: /UPSeal.png
+Disallow: /
+
+User-agent: TelegramBot
+Allow: /$
+Allow: /index.html
+Allow: /UPSeal.png
+Disallow: /
+
+User-agent: WhatsApp
+Allow: /$
+Allow: /index.html
+Allow: /UPSeal.png
+Disallow: /
+
+User-agent: LinkedInBot
+Allow: /$
+Allow: /index.html
+Allow: /UPSeal.png
+Disallow: /
+
+User-agent: Viber
+Allow: /$
+Allow: /index.html
+Allow: /UPSeal.png
+Disallow: /
+
+# No Sitemap: line, deliberately. A sitemap is an invitation to crawl
+# and there is nothing here that wants crawling.
