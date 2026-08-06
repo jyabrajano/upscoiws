@@ -14,8 +14,12 @@
 //      come through here; they still go straight to Supabase Auth
 //      and apply immediately.
 //
-//   2. The administrator approval panel, which is mounted inside
-//      the same Edit Account modal and only appears for admins.
+//   2. The administrator approval panel: mountAdminQueues() paints
+//      the two approval queues and mountAdminManager() paints the
+//      administrator list, both as their own cards on
+//      dashboard.html. They used to render inside the Edit Account
+//      modal; see the note near the end of
+//      initEditAccountApproval() below for why they moved.
 //
 // Every check in this file is for the interface's benefit. The
 // actual enforcement is in deploy-schema.sql: the RPCs are
@@ -361,6 +365,20 @@ function injectApprovalStyles() {
   .admin-remove:hover:not(:disabled) { background: #fef2f2; }
   .admin-remove:disabled { opacity: .55; cursor: not-allowed; }
 
+  .admin-cancel-invite {
+    flex-shrink: 0;
+    padding: 7px 12px;
+    border-radius: 8px;
+    border: 1.5px solid #fecaca;
+    background: #fff;
+    color: #b91c1c;
+    font: 700 12px/1 "Inter", sans-serif;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .admin-cancel-invite:hover:not(:disabled) { background: #fef2f2; }
+  .admin-cancel-invite:disabled { opacity: .55; cursor: not-allowed; }
+
   .admin-request {
     flex-shrink: 0;
     padding: 7px 12px;
@@ -608,6 +626,16 @@ async function addAdmin(email, note) {
 
 async function removeAdmin(email) {
   const { data, error } = await supabaseClient.rpc("admin_remove", { p_email: email });
+  if (error) throw error;
+  return data;
+}
+
+// Cancels a pending invitation (admin_add() before the person has
+// registered). Separate from removeAdmin(): an invite lives in
+// admin_invites, not admins, and admin_remove()'s DELETE against
+// admins matches nothing for it.
+async function cancelAdminInvite(email) {
+  const { data, error } = await supabaseClient.rpc("admin_invite_cancel", { p_email: email });
   if (error) throw error;
   return data;
 }
@@ -902,8 +930,15 @@ async function mountAdminManager(container, onChanged) {
   function adminRowHtml(a) {
     // Nobody removes their own access, and a main administrator's rank
     // can't be taken away from inside the application at all.
+    // An invite lives in admin_invites, not admins — admin_remove()'s
+    // DELETE against admins matches nothing for one, which is why this
+    // has to be told apart before any of the rank checks below run.
     let control;
-    if (a.is_you) {
+    if (a.is_invite) {
+      control = isMainAdmin
+        ? `<button type="button" class="admin-cancel-invite" data-email="${escapeApprovalHtml(a.email)}">Cancel invite</button>`
+        : '<span class="admin-row-locked" title="Only a main administrator can cancel an invitation">—</span>';
+    } else if (a.is_you) {
       control = '<span class="admin-row-locked" title="Ask another administrator to remove your access">—</span>';
     } else if (a.is_main) {
       control = '<span class="admin-row-locked" title="A main administrator\'s access can\'t be removed here">—</span>';
@@ -921,7 +956,9 @@ async function mountAdminManager(container, onChanged) {
           <span class="admin-email">${escapeApprovalHtml(a.email)}</span>
           ${a.is_main ? '<span class="admin-tag you">main</span>' : ""}
           ${a.is_you ? '<span class="admin-tag you">you</span>' : ""}
-          ${a.has_account ? "" : '<span class="admin-tag">not registered yet</span>'}
+          ${a.is_invite
+            ? `<span class="admin-tag">invited${a.expires_at ? ` · expires ${escapeApprovalHtml(formatApprovalStamp(a.expires_at))}` : ""}</span>`
+            : (a.has_account ? "" : '<span class="admin-tag">not registered yet</span>')}
           ${a.has_pending_removal && isMainAdmin ? '<span class="admin-tag">removal requested</span>' : ""}
           ${a.note ? `<div class="admin-note-text">${escapeApprovalHtml(a.note)}</div>` : ""}
         </div>
@@ -1018,6 +1055,26 @@ async function mountAdminManager(container, onChanged) {
         } catch (err) {
           console.error("Couldn't remove the administrator:", err);
           say(err.message || "Couldn't remove that administrator.", false);
+          btn.disabled = false;
+        }
+      });
+    });
+
+    // ---------- cancel a pending invitation (main administrators only) ----------
+
+    container.querySelectorAll(".admin-cancel-invite").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const email = btn.getAttribute("data-email");
+        if (!confirm(`Cancel the pending invitation for ${email}?`)) return;
+        btn.disabled = true;
+        try {
+          await cancelAdminInvite(email);
+          say(`Invitation to ${email} was cancelled.`, true);
+          if (typeof onChanged === "function") onChanged();
+          await render();
+        } catch (err) {
+          console.error("Couldn't cancel the invitation:", err);
+          say(err.message || "Couldn't cancel that invitation.", false);
           btn.disabled = false;
         }
       });

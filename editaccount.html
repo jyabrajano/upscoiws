@@ -23,7 +23,8 @@
   (Netlify _headers, Vercel vercel.json, nginx add_header) — a
   header can also carry frame-ancestors, which a <meta> tag can't.
 
-  Keep this identical across all seven pages. The connect-src line is
+  Keep this identical across every page listed in sync-csp.js's
+  PAGES array. The connect-src line is
   generated -- run `node sync-csp.js` rather than editing it by hand.
   If you self-host the Supabase SDK, drop cdn.jsdelivr.net from
   script-src.
