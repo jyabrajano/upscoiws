@@ -502,7 +502,51 @@
     font-size: 11.5px;
     color: var(--muted);
     letter-spacing: 0.3px;
-  }</style>
+  }
+
+  /* ========== MOBILE RESPONSIVE ========== */
+  @media (max-width: 480px) {
+    body {
+      padding: 12px;
+      align-items: flex-start;
+    }
+    .card {
+      max-width: 100%;
+      border-radius: 12px;
+    }
+    .card-header {
+      padding: 24px 20px 20px;
+    }
+    .logo {
+      width: 64px;
+      height: 64px;
+    }
+    .card-header h1 {
+      font-size: 16px;
+    }
+    .card-header p {
+      font-size: 10px;
+    }
+    .card-body {
+      padding: 22px 18px;
+    }
+    .field input {
+      padding: 11px 12px;
+      font-size: 16px; /* prevents iOS zoom on focus */
+    }
+    button.primary, button.sso-btn {
+      padding: 13px;
+      font-size: 14px;
+    }
+    .reset-row {
+      flex-direction: column;
+    }
+    .reset-row button {
+      width: 100%;
+      padding: 12px;
+    }
+  }
+</style>
 </head>
 <body>
   <div class="card">

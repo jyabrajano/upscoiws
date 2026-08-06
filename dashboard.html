@@ -873,7 +873,95 @@
   }
   #profileStatus.status.error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
   #profileStatus.status.success { background: var(--yellow-soft); color: #854d0e; border: 1px solid #fde68a; }
-  #profileStatus.status.visible { display: block; }</style>
+  #profileStatus.status.visible { display: block; }
+
+  /* ========== MOBILE RESPONSIVE ========== */
+  @media (max-width: 768px) {
+    nav {
+      padding: 12px 16px;
+      gap: 10px;
+    }
+    nav .brand img {
+      width: 44px;
+      height: 44px;
+    }
+    nav h1 {
+      font-size: 13.5px;
+      white-space: normal;
+    }
+    nav .brand-text p {
+      font-size: 9px;
+      letter-spacing: 1px;
+    }
+    nav .links {
+      gap: 12px;
+      flex-wrap: wrap;
+      width: 100%;
+      justify-content: flex-end;
+    }
+    nav a { font-size: 13px; }
+    .profile-name { max-width: 90px; }
+    .profile-btn { padding: 5px 10px 5px 5px; font-size: 12px; }
+    .profile-avatar { width: 22px; height: 22px; font-size: 11px; }
+
+    .wrap {
+      padding: 16px 12px;
+      gap: 16px;
+    }
+    .card {
+      padding: 18px 14px;
+      border-radius: 12px;
+    }
+    .identity-name {
+      font-size: 24px;
+      letter-spacing: -0.4px;
+    }
+    .identity-sub { font-size: 12.5px; }
+
+    .available-card {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin-left: -4px;
+      margin-right: -4px;
+      padding-left: 4px;
+      padding-right: 4px;
+    }
+    .available-card table {
+      min-width: 680px;
+    }
+    .available-card thead th,
+    .available-card tbody td {
+      padding: 10px 12px;
+      font-size: 12px;
+    }
+    .available-card thead th {
+      font-size: 10px;
+      letter-spacing: 0.5px;
+    }
+
+    .ai-launcher {
+      bottom: 16px;
+      right: 16px;
+      width: 52px;
+      height: 52px;
+    }
+    .ai-widget {
+      bottom: 16px;
+      right: 16px;
+      width: calc(100vw - 32px);
+      max-width: 340px;
+      height: min(480px, calc(100vh - 80px));
+    }
+  }
+
+  @media (max-width: 480px) {
+    nav h1 { font-size: 12.5px; }
+    nav .links { gap: 8px; }
+    .identity-name { font-size: 20px; }
+    .card { padding: 14px 12px; }
+    .available-card table { min-width: 620px; }
+  }
+</style>
 </head>
 <body>
   <nav>
