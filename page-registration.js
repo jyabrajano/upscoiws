@@ -18,6 +18,101 @@
 const DENIED =
   "Access denied: if the given details are valid, Please contact the administrator.";
 
+// ------------------------------------------------------------
+// Not every failure is a refusal.
+//
+// DENIED is deliberately mute because the things it covers — a name
+// already on file, an account number already on file, an address
+// that already has an account — are all answers about SOMEONE ELSE'S
+// record. Saying which one clashed is how a stranger enumerates the
+// register, so it stays a single line.
+//
+// That reasoning does not extend to failures that are about the
+// server or about the person's own input. "Signups are switched off",
+// "you are rate limited", "the browser could not reach Supabase" and
+// "that password is shorter than the server allows" reveal nothing
+// about anybody, and reporting them as "Access denied ... contact the
+// administrator" is how a five-minute configuration fix turns into a
+// week of tickets. Those get named.
+//
+// Anything not recognised here — including HTTP 500 / "Database error
+// saving new user", which is what a duplicate name looks like coming
+// back out of enforce_profile_uniqueness() — falls through to DENIED.
+// When in doubt, say nothing.
+//
+// `retry` is false for failures that are not the person's fault and
+// will not be fixed by waiting; those skip the escalating cooldown.
+// ------------------------------------------------------------
+function classifyFailure(err) {
+  const raw = String((err && (err.message || err.error_description)) || "");
+  const msg = raw.toLowerCase();
+  const status = err && (err.status || err.statusCode || (err.context && err.context.status));
+
+  // Our own sentinel for a duplicate. Stays mute, by design.
+  if (msg === "blocked") return null;
+
+  // Thrown by handle_new_user() when the UP Mail toggle is on and the
+  // address is not @up.edu.ph. The page already says so elsewhere.
+  if (msg.includes("up_mail_required")) return { text: UP_MAIL_MSG, retry: true };
+
+  // No network, wrong SUPABASE_URL, or a connect-src that does not
+  // list it. Nothing left the browser, so nothing was refused.
+  if (err instanceof TypeError ||
+      msg.includes("failed to fetch") ||
+      msg.includes("networkerror") ||
+      msg.includes("load failed")) {
+    return {
+      text: "Couldn't reach the server. Check your connection and try again — " +
+            "if this keeps happening, tell the administrator the portal can't " +
+            "contact its database.",
+      retry: false,
+    };
+  }
+
+  // Supabase → Authentication → Providers → Email → "Allow new users
+  // to sign up" is off. Every registration fails identically until
+  // somebody turns it back on, and no amount of retrying helps.
+  if (msg.includes("signups not allowed") ||
+      msg.includes("signup is disabled") ||
+      msg.includes("signups are disabled") ||
+      msg.includes("email signups are disabled")) {
+    return {
+      text: "New registrations are switched off on the server. Please contact " +
+            "the administrator — this is not a problem with your details.",
+      retry: false,
+    };
+  }
+
+  // Supabase Auth's own rate limit, which is the one that counts.
+  if (status === 429 || msg.includes("rate limit") || msg.includes("too many requests")) {
+    return {
+      text: "Too many attempts from this network. Wait a few minutes, then try again.",
+      retry: true,
+    };
+  }
+
+  // Supabase's minimum password length is higher than PASSWORD_MIN_LENGTH
+  // in config.js, so the form promised to accept something the API then
+  // refused. About this person's own password; safe to say.
+  if (msg.includes("password") &&
+      (msg.includes("should be") || msg.includes("at least") ||
+       msg.includes("weak") || msg.includes("characters"))) {
+    return {
+      text: "The server wants a longer password than this form asked for. " +
+            "Please choose a longer one.",
+      retry: true,
+    };
+  }
+
+  // Supabase rejected the address itself. Says nothing about whether
+  // anyone is registered under it.
+  if (msg.includes("invalid email") || msg.includes("email address") && msg.includes("invalid")) {
+    return { text: "That email address wasn't accepted. Please check it and try again.", retry: true };
+  }
+
+  return null;
+}
+
 // The one error that names itself. A wrong length is the person's
 // own typing, not a clue about anyone else's record, so saying so
 // gives nothing away — and "10 digits" is the only thing that
@@ -98,6 +193,7 @@ let acctClash = false;   // one of the account numbers already on file
 let checking  = false;   // a duplicate check is queued or in flight
 let sending   = false;   // signUp is in flight
 let refused   = false;   // the last attempt was turned down
+let refusalText = "";    // the named reason for it, when there is one
 let asked     = false;   // Request Access has been pressed at least once
 
 // Nothing on this form is called wrong until Request Access has been
@@ -253,7 +349,10 @@ function refresh() {
   if (!complete)              { showStatus("Fill in every required field to continue.", "error"); return; }
   if (checking)               { clearStatus(); return; }
 
-  if (blocked) showStatus(DENIED, "error");
+  // refresh() runs again in the submit handler's `finally`, after the
+  // catch has already written a message. Without this it would paint
+  // DENIED straight over a named reason a moment later.
+  if (blocked) showStatus(refusalText || DENIED, "error");
   else clearStatus();
 }
 
@@ -268,6 +367,26 @@ function refresh() {
 // for a newer one, so each round carries a number and only the
 // latest is allowed to settle anything.
 let round = 0;
+
+// Resolves when the check that is currently queued or in flight has
+// settled. The submit handler waits on this instead of giving up, so
+// a press that lands inside the 450ms debounce window is honoured
+// rather than swallowed.
+let checkSettled = Promise.resolve();
+let markChecked = null;
+
+function beginCheck() {
+  if (!checking) {
+    checking = true;
+    checkSettled = new Promise((resolve) => { markChecked = resolve; });
+  }
+  runChecks();
+}
+
+function endCheck() {
+  checking = false;
+  if (markChecked) { markChecked(); markChecked = null; }
+}
 
 const runChecks = debounce(async () => {
   const mine  = ++round;
@@ -284,7 +403,7 @@ const runChecks = debounce(async () => {
     acctClash = clashes.length > 0;
   } finally {
     if (mine === round) {
-      checking = false;
+      endCheck();
       refresh();
     }
   }
@@ -292,20 +411,21 @@ const runChecks = debounce(async () => {
 
 function nameChanged() {
   refused = false;
-  checking = true;
+  refusalText = "";
+  beginCheck();
   refresh();
-  runChecks();
 }
 
 function accountsChanged() {
   refused = false;
-  checking = true;
+  refusalText = "";
+  beginCheck();
   refresh();
-  runChecks();
 }
 
 function detailsChanged() {
   refused = false;
+  refusalText = "";
   refresh();
 }
 
@@ -344,6 +464,23 @@ form.addEventListener("submit", async (e) => {
   // fixing something clears its own error.
   asked = true;
 
+  // A duplicate check may still be queued or in flight from the last
+  // keystroke — 450ms of debounce is easy to press through. This used
+  // to return here, which cleared the status line and left an enabled
+  // button that had visibly done nothing: the exact shape of "the
+  // form is broken". Wait for the answer instead, then carry on.
+  if (checking) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Checking\u2026";
+    try {
+      await checkSettled;
+    } finally {
+      submitBtn.textContent = "Request Access";
+      refresh();
+    }
+    if (submitBtn.disabled) return; // a cooldown started while we waited
+  }
+
   nameBuilder.tidy();
   const fullName = nameBuilder.value();
   const email    = emailInput.value.trim();
@@ -366,15 +503,6 @@ form.addEventListener("submit", async (e) => {
       .find(el => bad.has(el) || short.has(el));
     if (firstBad) firstBad.focus({ preventScroll: true });
     statusEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    return;
-  }
-
-  // A duplicate check may still be in flight from the last keystroke.
-  // Waiting is better than refusing: the final check below is
-  // authoritative anyway, and refusing here would mean a fast typist
-  // gets turned away for being fast.
-  if (checking) {
-    refresh();
     return;
   }
 
@@ -453,12 +581,15 @@ form.addEventListener("submit", async (e) => {
     window.location.href = "index.html?registered=" + (needsConfirm ? "confirm" : "1");
     return;
   } catch (err) {
-    // The console keeps the real reason for whoever maintains
-    // this. The page doesn't.
+    // The console keeps the real reason for whoever maintains this.
+    // The page shows it only when saying so reveals nothing about
+    // anyone else's record — see classifyFailure() at the top.
     console.error("Registration failed:", err);
+    const named = classifyFailure(err);
     refused = true;
-    startCooldown();
-    showStatus(DENIED, "error", true);
+    refusalText = named ? named.text : "";
+    if (!named || named.retry) startCooldown();
+    showStatus(named ? named.text : DENIED, "error", true);
   } finally {
     sending = false;
     submitBtn.textContent = "Request Access";
