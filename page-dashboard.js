@@ -97,11 +97,18 @@
   if (isAdmin) {
     // Admins have their own account too and can have checks waiting
     // on them same as anyone else. This used to just hide the panel
-    // for admins outright; now it's pulled to the top of the admin
-    // section instead — same element, moved rather than hidden, so
-    // it isn't buried under the approval queues below.
-    const adminSlot = document.getElementById("adminAvailableSlot");
-    if (adminSlot) adminSlot.appendChild(availableCard);
+    // for admins outright; now it's appended straight into
+    // #adminSection, after the Administrators panel.
+    //
+    // It has to be a direct child of #adminSection and not wrapped in
+    // an extra div: #adminSection is `display: contents`, which is
+    // what lets its children act as top-level items in the page's
+    // grid and pick up .available-card's own grid-column: 1 / -1 (so
+    // it spans the full row, same width as the identity card above,
+    // instead of being squeezed into a single 2fr/1fr column like the
+    // narrower admin-card panels). A wrapper div here would itself
+    // become the grid item and swallow that span.
+    document.getElementById("adminSection").appendChild(availableCard);
   }
 
   try {
