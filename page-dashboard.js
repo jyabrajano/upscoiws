@@ -95,8 +95,16 @@
   const availableBody = document.getElementById("availableBody");
 
   if (isAdmin) {
-    availableCard.style.display = "none";
-  } else try {
+    // Admins have their own account too and can have checks waiting
+    // on them same as anyone else. This used to just hide the panel
+    // for admins outright; now it's pulled to the top of the admin
+    // section instead — same element, moved rather than hidden, so
+    // it isn't buried under the approval queues below.
+    const adminSlot = document.getElementById("adminAvailableSlot");
+    if (adminSlot) adminSlot.appendChild(availableCard);
+  }
+
+  try {
     // available_transactions.user_email holds a comma-separated list
     // on some rows — one payment, several contact addresses at the
     // same supplier. A whole-cell .eq() therefore missed people who
