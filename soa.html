@@ -192,11 +192,29 @@
     text-decoration: none;
     font-size: 14px;
     font-weight: 500;
+    position: relative;
+    padding-bottom: 2px;
     transition: color 0.2s var(--ease), text-shadow 0.2s var(--ease);
+  }
+  nav a::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -2px;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--yellow), transparent);
+    border-radius: 2px;
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform 0.28s var(--ease-out);
   }
   nav a:hover {
     color: var(--yellow);
     text-shadow: 0 0 12px var(--yellow-glow);
+  }
+  nav a:hover::after {
+    transform: scaleX(1);
   }
 
   nav .logout {
@@ -263,17 +281,27 @@
     top: calc(100% + 10px);
     right: 0;
     width: 240px;
-    background: var(--card);
-    backdrop-filter: blur(24px) saturate(1.2);
-    -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(32px) saturate(1.4);
+    -webkit-backdrop-filter: blur(32px) saturate(1.4);
     border: 1px solid var(--card-border);
     border-radius: 14px;
-    box-shadow: var(--shadow-lg), 0 0 0 1px rgba(123,17,19,0.06);
+    box-shadow:
+      var(--shadow-lg),
+      0 0 0 1px rgba(123,17,19,0.06),
+      0 0 24px rgba(123, 17, 19, 0.08);
     padding: 8px;
     display: none;
     z-index: 50;
   }
-  .profile-menu.open .profile-dropdown { display: block; }
+  .profile-menu.open .profile-dropdown {
+    display: block;
+    animation: dropdownIn 0.28s var(--ease-out) both;
+  }
+  @keyframes dropdownIn {
+    from { opacity: 0; transform: translateY(-10px) scale(0.94); filter: blur(3px); }
+    to   { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  }
 
   .profile-dropdown-header {
     padding: 10px 12px 12px;
@@ -369,23 +397,34 @@
 
   .card {
     background: var(--card);
-    backdrop-filter: blur(24px) saturate(1.2);
-    -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    backdrop-filter: blur(28px) saturate(1.35);
+    -webkit-backdrop-filter: blur(28px) saturate(1.35);
     border-radius: 16px;
     padding: 30px;
     border: 1px solid var(--card-border);
     box-shadow:
       var(--shadow-md),
       inset 0 1px 0 rgba(255, 255, 255, 0.95);
-    transition: border-color 0.25s var(--ease), box-shadow 0.25s var(--ease), transform 0.25s var(--ease);
+    transition:
+      border-color 0.3s var(--ease),
+      box-shadow 0.35s var(--ease-out),
+      transform 0.3s var(--ease-out),
+      background 0.3s var(--ease);
+    animation: cardIn 0.5s var(--ease-out) both;
   }
   .card:hover {
-    border-color: rgba(245, 176, 65, 0.45);
+    border-color: rgba(245, 176, 65, 0.55);
+    background: rgba(255, 255, 255, 0.97);
     box-shadow:
-      0 8px 24px rgba(123, 17, 19, 0.1),
-      0 0 0 1px rgba(245, 176, 65, 0.2),
+      0 12px 32px rgba(123, 17, 19, 0.12),
+      0 0 0 1px rgba(245, 176, 65, 0.28),
+      0 0 40px rgba(245, 176, 65, 0.12),
       inset 0 1px 0 rgba(255, 255, 255, 1);
-    transform: translateY(-1px);
+    transform: translateY(-3px);
+  }
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(12px); filter: blur(3px); }
+    to   { opacity: 1; transform: translateY(0); filter: blur(0); }
   }
 
   .head-row {
@@ -447,7 +486,9 @@
     gap: 6px;
     margin-bottom: 20px;
     padding: 4px;
-    background: var(--surface);
+    background: rgba(123, 17, 19, 0.05);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--card-border);
     border-radius: var(--radius-sm);
     width: fit-content;
@@ -463,18 +504,26 @@
     background: transparent;
     color: var(--muted);
     font-family: inherit;
-    transition: background 0.2s var(--ease), color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+    transition:
+      background 0.25s var(--ease),
+      color 0.25s var(--ease),
+      box-shadow 0.25s var(--ease),
+      transform 0.2s var(--ease-out);
   }
 
   .table-tab:hover:not(.active) {
     color: var(--maroon);
-    background: rgba(123, 17, 19, 0.06);
+    background: rgba(123, 17, 19, 0.08);
+    transform: translateY(-1px);
   }
 
   .table-tab.active {
     background: linear-gradient(135deg, var(--maroon), var(--maroon-dark));
     color: var(--white);
-    box-shadow: var(--shadow-btn);
+    box-shadow: var(--shadow-btn), 0 0 16px rgba(123, 17, 19, 0.2);
+  }
+  .table-tab:active {
+    transform: scale(0.97);
   }
 
   table {
@@ -570,11 +619,21 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease), opacity 0.2s var(--ease);
+    transition:
+      transform 0.25s var(--ease-out),
+      box-shadow 0.25s var(--ease),
+      opacity 0.2s var(--ease),
+      filter 0.2s var(--ease);
   }
   .export-btn:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(123, 17, 19, 0.32);
+    transform: translateY(-2px);
+    box-shadow:
+      0 6px 18px rgba(123, 17, 19, 0.35),
+      0 0 20px rgba(245, 176, 65, 0.2);
+    filter: brightness(1.05);
+  }
+  .export-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
   }
   .export-btn:disabled {
     opacity: 0.5;
@@ -714,179 +773,122 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  /* Respect reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    .card { animation: none !important; filter: none !important; }
+    .card:hover { transform: none !important; }
+  }
+
+  /* ========== PRINT STYLES (responsive) ========== */
   @media print {
-    nav, .filter-bar, .export-btn, .print-btn, .table-tabs, .trunc-notice { display: none !important; }
-
-    body { background: #fff; border-top: none; }
-    body::before { display: none; }
-
-    .wrap { padding: 0; max-width: 100%; }
-
+    @page { size: auto; margin: 12mm 10mm; }
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    nav, .filter-bar, .export-btn, .print-btn, .table-tabs, .trunc-notice,
+    .profile-menu, .btn-group {
+      display: none !important;
+    }
+    html, body {
+      background: #fff !important;
+      background-image: none !important;
+      border-top: none !important;
+      color: #000 !important;
+      font-size: 11pt;
+    }
+    body::before { display: none !important; }
+    .wrap { padding: 0 !important; max-width: 100% !important; }
     .card {
-      box-shadow: none;
-      border: none;
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-      padding: 0;
+      box-shadow: none !important;
+      border: none !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      padding: 0 !important;
+      background: #fff !important;
+      transform: none !important;
+      animation: none !important;
     }
-    .card:hover { box-shadow: none; border-color: var(--card-border); }
-
+    .card:hover { transform: none !important; box-shadow: none !important; }
     .print-only {
-      display: block;
-      margin-bottom: 18px;
-      border-bottom: 2px solid var(--maroon);
-      padding-bottom: 12px;
+      display: block !important;
+      margin-bottom: 14px;
+      border-bottom: 2px solid #7b1113;
+      padding-bottom: 10px;
     }
-    .print-only .print-title {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--maroon);
+    .print-only .print-title { font-size: 14pt; font-weight: 700; color: #7b1113; }
+    .print-only .print-sub { font-size: 9pt; color: #444; margin-top: 4px; }
+    .table-scroll { overflow: visible !important; }
+    table { min-width: 0 !important; width: 100% !important; border-collapse: collapse !important; }
+    thead { display: table-header-group; }
+    thead th {
+      color: #000 !important;
+      background: #f0f0f0 !important;
+      border-bottom: 1.5pt solid #000 !important;
+      font-size: 8.5pt !important;
+      padding: 6px 5px !important;
     }
-    .print-only .print-sub {
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: 4px;
-    }
-
-    thead th { 
-      color: #000; 
-      background: none; 
-      border-bottom: 2px solid #000; 
-      text-shadow: none;
-    }
+    tbody tr { page-break-inside: avoid; }
     tbody:hover tr { filter: none !important; opacity: 1 !important; }
-    tbody tr:hover { background: transparent; }
-    tbody td { border-bottom: 1px solid #ccc; }
+    tbody tr:hover { background: transparent !important; }
+    tbody td {
+      border-bottom: 0.5pt solid #999 !important;
+      padding: 5px !important;
+      font-size: 9pt !important;
+      color: #000 !important;
+      background: #fff !important;
+    }
+    @media print and (max-width: 480px) {
+      @page { margin: 8mm 6mm; }
+      body { font-size: 9pt; }
+      thead th { font-size: 7.5pt !important; }
+      tbody td { font-size: 8pt !important; }
+    }
   }
 
   /* ========== MOBILE RESPONSIVE ========== */
   @media (max-width: 768px) {
-    nav {
-      padding: 12px 16px;
-      gap: 10px;
-    }
-    nav .brand img {
-      width: 44px;
-      height: 44px;
-    }
-    nav h1 {
-      font-size: 13.5px;
-      white-space: normal;
-    }
-    nav .brand-text p {
-      font-size: 9px;
-      letter-spacing: 1px;
-    }
-    nav .links {
-      gap: 12px;
-      flex-wrap: wrap;
-      width: 100%;
-      justify-content: flex-end;
-    }
+    nav { padding: 12px 16px; gap: 10px; }
+    nav .brand img { width: 44px; height: 44px; }
+    nav h1 { font-size: 13.5px; white-space: normal; }
+    nav .brand-text p { font-size: 9px; letter-spacing: 1px; }
+    nav .links { gap: 12px; flex-wrap: wrap; width: 100%; justify-content: flex-end; }
     nav a { font-size: 13px; }
     .profile-name { max-width: 90px; }
-    .profile-btn { padding: 5px 10px 5px 5px; font-size: 12px; }
-    .profile-avatar { width: 22px; height: 22px; font-size: 11px; }
-
-    .wrap {
-      padding: 16px 12px;
-    }
-    .card {
-      padding: 18px 14px;
-      border-radius: 12px;
-    }
-    .head-row {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 14px;
-    }
-    .head-row h2 {
-      font-size: 18px;
-    }
-    .btn-group {
-      width: 100%;
-      flex-wrap: wrap;
-    }
-    .export-btn, .print-btn {
-      flex: 1;
-      min-width: 120px;
-      justify-content: center;
-      padding: 10px 14px;
-      font-size: 12.5px;
-    }
-
-    .table-tabs {
-      width: 100%;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    .table-tab {
-      padding: 8px 14px;
-      font-size: 12px;
-      white-space: nowrap;
-    }
-
-    .filter-bar {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 12px;
-      padding: 14px;
-    }
-    .filter-field {
-      width: 100%;
-    }
-    .filter-field select,
-    .filter-field input[type="date"] {
-      width: 100%;
-      min-width: 0;
-    }
-    .filter-actions {
-      width: 100%;
-    }
-    .filter-btn {
-      flex: 1;
-    }
-    .filter-note {
-      margin-left: 0;
-      width: 100%;
-      text-align: left;
-    }
-
-    /* Horizontal scroll for the data table */
+    .wrap { padding: 16px 12px; }
+    .card { padding: 18px 14px; border-radius: 12px; }
+    .head-row { flex-direction: column; align-items: flex-start; gap: 14px; }
+    .head-row h2 { font-size: 18px; }
+    .btn-group { width: 100%; flex-wrap: wrap; }
+    .export-btn, .print-btn { flex: 1; min-width: 120px; justify-content: center; }
+    .table-tabs { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table-tab { padding: 8px 14px; font-size: 12px; white-space: nowrap; }
+    .filter-bar { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; }
+    .filter-field { width: 100%; }
+    .filter-field select, .filter-field input[type="date"] { width: 100%; min-width: 0; }
+    .filter-actions { width: 100%; }
+    .filter-btn { flex: 1; }
+    .filter-note { margin-left: 0; width: 100%; }
     .table-scroll {
       width: 100%;
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
-      margin: 0 -2px;
-      border-radius: 8px;
     }
-    .table-scroll table {
-      min-width: 640px;
-    }
-    thead th,
-    tbody td {
-      padding: 10px 12px;
-      font-size: 12.5px;
-    }
-    thead th {
-      font-size: 10.5px;
-      letter-spacing: 0.5px;
-      padding: 11px 12px;
-    }
-
-    /* Disable the hover-blur effect on touch devices */
-    tbody:hover tr {
-      filter: none;
-      opacity: 1;
-    }
+    .table-scroll table { min-width: 640px; }
+    thead th, tbody td { padding: 10px 12px; font-size: 12.5px; }
+    thead th { font-size: 10.5px; }
+    tbody:hover tr { filter: none; opacity: 1; }
   }
-
   @media (max-width: 480px) {
     nav h1 { font-size: 12.5px; }
     .head-row h2 { font-size: 16px; }
     .card { padding: 14px 10px; }
-    table { min-width: 560px; }
-    thead th, tbody td { padding: 9px 10px; font-size: 12px; }
+    .table-scroll table { min-width: 560px; }
   }
 </style>
 </head>
