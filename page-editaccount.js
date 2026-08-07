@@ -1,16 +1,14 @@
 
 // ------------------------------------------------------------
-// Both buttons stay disabled until the form they belong to is
-// complete and clean. Nothing on this page says which check
-// failed: once the boxes are filled, anything still blocking
-// produces the same single line. Naming the detail that clashed
-// would let anyone with a login work out who holds which name
-// and which account number.
+// Both forms use a normal, always-clickable button — neither is
+// disabled while the person is just typing. Pressing Submit or
+// Update Password while a request is already in flight is a no-op
+// (guarded by a `sending` flag, not by the button's disabled state).
 //
-// The gate is a convenience, not the guard. Change requests are
-// written by request_profile_change() and the uniqueness rules
-// live in deploy-schema.sql — they hold whether or not this
-// script runs.
+// Nothing is said about a form until its button has actually been
+// pressed once. Change requests are written by
+// request_profile_change() and the uniqueness rules live in
+// deploy-schema.sql — they hold whether or not this script runs.
 // ------------------------------------------------------------
 
 const DENIED =
@@ -24,8 +22,8 @@ const ACCT_LENGTH_MSG =
   "LBP account numbers are default 10 digit, please input the valid account number!";
 
 // Pressing Submit on an untouched form gets an answer rather than
-// a dead button — there's nothing to hide about "you didn't
-// change anything", so it says so.
+// nothing — there's nothing to hide about "you didn't change
+// anything", so it says so.
 const NO_CHANGES = "No changes applied.";
 
 const statusEl = document.getElementById("status");
@@ -51,6 +49,13 @@ function debounce(fn, ms) {
 const submitBtn = document.getElementById("eaSubmit");
 const gateEl = document.getElementById("eaGate");
 
+// Never disabled by this page. approval.js's initEditAccountApproval
+// still turns it off for the duration of an actual submit (network
+// round trip) via its own refreshGate/disabled toggle around the
+// request — that's a normal "request in flight" state, not a
+// validation gate, and is left alone.
+submitBtn.disabled = false;
+
 (async () => {
   const session = await requireSession();
   if (!session) return;
@@ -64,7 +69,6 @@ const gateEl = document.getElementById("eaGate");
   if (error || !profile) {
     console.error("Couldn't load your profile:", error);
     showStatus("Couldn't load your details. Try again later.", "error");
-    submitBtn.disabled = true;
     gateEl.textContent = "";
     return;
   }
@@ -113,13 +117,13 @@ const gateEl = document.getElementById("eaGate");
     }
   );
 
-  // ---- state the button reads ----
+  // ---- state ----
 
   let nameClash = false;   // the name belongs to someone else
   let acctClash = false;   // a number belongs to someone else
   let checking  = false;   // a check is queued or in flight
-  let refused   = false;   // the last attempt was turned down
   let acctAsked = false;   // Submit has been pressed on a short number
+  let asked     = false;   // Submit has been pressed at least once
 
   const touched = new WeakSet();
 
@@ -136,9 +140,8 @@ const gateEl = document.getElementById("eaGate");
   // Every box stopping the form, collected in one pass.
   //
   // Short account numbers are deliberately NOT in `bad`: they
-  // don't hold the button down, because the number is only judged
-  // when Submit is pressed. The press is what turns a number in
-  // progress into a wrong one.
+  // don't get flagged until Submit is pressed. The press is what
+  // turns a number in progress into a wrong one.
   function problems() {
     const bad = new Set();
     const short = new Set();
@@ -159,8 +162,8 @@ const gateEl = document.getElementById("eaGate");
   }
 
   // Nothing to approve if nothing moved. A half-typed number
-  // still counts as moved, or the button would be off and there'd
-  // be no press to judge it on.
+  // still counts as moved, or a press on it would have nothing to
+  // judge.
   function currentAccounts() {
     const accts = acctList.validate();
     return accts.ok ? accts.value : acctList.value();
@@ -178,27 +181,28 @@ const gateEl = document.getElementById("eaGate");
     });
   }
 
+  // Repaints the invalid-box outlines and the small "Checking…"
+  // hint, but never touches the notification box itself — that only
+  // happens inside the submit handler, in direct response to a
+  // press.
   function refresh() {
     const { bad, short } = problems();
-    const complete = Boolean(firstInput.value.trim() && lastInput.value.trim());
-    const blocked = bad.size > 0 || nameClash || acctClash || refused;
-
-    // Nothing is said about a number until Submit has been pressed
-    // on it. Until then 3072-10 is a number in progress.
-    const shortReported = acctAsked && short.size > 0;
-
     paint(bad, short);
-    submitBtn.disabled = checking || !complete || blocked;
 
+    // approval.js briefly disables the button for the duration of an
+    // actual network write and hands control back through this same
+    // function (passed in as refreshGate). That's a normal "request
+    // in flight" state, not a validation gate — so every call here
+    // re-enables it rather than leaving it disabled once the request
+    // finishes.
+    submitBtn.disabled = false;
+
+    if (!asked) { gateEl.textContent = ""; return; }
+
+    const complete = Boolean(firstInput.value.trim() && lastInput.value.trim());
     if (!complete)     gateEl.textContent = "Enter at least a first and last name.";
     else if (checking) gateEl.textContent = "Checking\u2026";
     else               gateEl.textContent = "";
-
-    // The length message stands on its own, and outranks the
-    // catch-all line.
-    if (shortReported)         { showStatus(ACCT_LENGTH_MSG, "error"); return; }
-    if (!complete || checking) return;
-    if (blocked)               showStatus(DENIED, "error");
   }
 
   // ---- duplicate checks ----
@@ -208,9 +212,9 @@ const gateEl = document.getElementById("eaGate");
   // can't be run is treated as "can't tell" — the database still
   // refuses, so a network hiccup shouldn't lock anyone out here.
   //
-  // A slow answer to an old question must not unlock the button
-  // for a newer one, so each round carries a number and only the
-  // latest is allowed to settle anything.
+  // A slow answer to an old question must not settle anything for
+  // a newer one, so each round carries a number and only the
+  // latest is allowed to update the flags.
   let round = 0;
 
   const runChecks = debounce(async () => {
@@ -239,7 +243,7 @@ const gateEl = document.getElementById("eaGate");
   }, 450);
 
   function fieldsChanged() {
-    if (refused) { refused = false; clearStatus(); }
+    if (asked) clearStatus();
     acctAsked = false;   // back to a number in progress
     checking = true;
     refresh();
@@ -264,21 +268,19 @@ const gateEl = document.getElementById("eaGate");
 
   refresh();
 
-  // A disabled button doesn't stop the Enter key everywhere, and
-  // this listener is registered before approval.js's, so it gets
-  // to call it off first.
+  // This listener runs before approval.js's (registered first), so
+  // it gets first say on whether the submit proceeds. It no longer
+  // relies on the button being disabled — it judges the press
+  // itself and shows the notification here, once, on that press.
   document.getElementById("eaForm").addEventListener("submit", (e) => {
-    if (submitBtn.disabled) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      return;
-    }
+    asked = true;
 
     // Nothing to send if nothing moved.
     if (!edited()) {
       e.preventDefault();
       e.stopImmediatePropagation();
       showStatus(NO_CHANGES, "notice");
+      refresh();
       return;
     }
 
@@ -288,14 +290,45 @@ const gateEl = document.getElementById("eaGate");
       e.preventDefault();
       e.stopImmediatePropagation();
       acctAsked = true;
+      showStatus(ACCT_LENGTH_MSG, "error");
       refresh();
-      statusEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      return;
     }
+
+    // A duplicate check may still be in flight from the last
+    // keystroke, and nameClash/acctClash still hold whatever the
+    // PREVIOUS value returned — not the one sitting in the box now.
+    // Typing someone else's number, then correcting it back to a
+    // number the person already legitimately owns, and submitting
+    // inside that ~450ms window is exactly the case this guards:
+    // without it, a stale "clash" from the number that's no longer
+    // there would wrongly refuse the person's own number. Wait for
+    // the fresh answer rather than judge a value that isn't current.
+    if (checking) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      gateEl.textContent = "Checking\u2026";
+      return;
+    }
+
+    if (nameClash || acctClash) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      showStatus(DENIED, "error");
+      refresh();
+      return;
+    }
+
+    // Otherwise let it through to approval.js's own submit handler,
+    // which does the real work (request_profile_change) and paints
+    // its own success/DENIED message when that resolves.
+    refresh();
   });
 
-  // approval.js owns the submit handler — it writes the change
-  // request and paints the pending banner. refreshGate is how it
-  // hands the button back: the gate decides, not the handler.
+  // approval.js owns the actual write — it calls request_profile_change
+  // and paints the pending banner. refreshGate is how it hands the
+  // button back after a real network round trip; that's a normal
+  // "busy" state, not the validation gate this file used to apply.
   try {
     await initEditAccountApproval({
       profile,
@@ -318,21 +351,21 @@ const gateEl = document.getElementById("eaGate");
         refresh();
       },
       refreshGate: refresh,
-      onClash: () => { refused = true; },
+      onClash: () => {},
     });
   } catch (err) {
     console.error("Approval wiring failed:", err);
     showStatus("Account editing is unavailable right now.", "error");
-    submitBtn.disabled = true;
     gateEl.textContent = "";
   }
 })();
 
 // ---- password ----
 //
-// The exception: no approval, applies at once. Same gate, so the
-// button can't be pressed on a password that was never going to
-// be accepted.
+// The exception: no approval, applies at once. Same rule as above —
+// the button is never disabled by validation, only guarded against
+// being pressed twice while a change is actually in flight, and the
+// notification only appears once Update Password has been pressed.
 
 const pwCurrentInput = document.getElementById("eaCurrentPassword");
 const pwInput = document.getElementById("eaNewPassword");
@@ -341,31 +374,35 @@ const pwBtn = document.getElementById("eaPasswordSubmit");
 const pwGateEl = document.getElementById("eaPwGate");
 const pwTouched = new WeakSet();
 let pwSending = false;
+let pwAsked = false;
+
+pwBtn.disabled = false;
 
 function refreshPasswordGate() {
   const current = pwCurrentInput.value;
   const pw = pwInput.value;
   const confirm = pwConfirmInput.value;
-  const hasCurrent = Boolean(current);
   const longEnough = passwordLongEnough(pw);
   const matches = Boolean(confirm) && confirm === pw;
 
   pwInput.classList.toggle("is-invalid", pwTouched.has(pwInput) && Boolean(pw) && !longEnough);
   pwConfirmInput.classList.toggle("is-invalid", pwTouched.has(pwConfirmInput) && Boolean(confirm) && !matches);
 
-  pwBtn.disabled = pwSending || !hasCurrent || !longEnough || !matches;
+  if (pwSending) { pwGateEl.textContent = ""; return; }
+  if (!pwAsked)  { pwGateEl.textContent = ""; return; }
 
-  if (pwSending)               pwGateEl.textContent = "";
-  else if (!pw && !confirm && !current)
-                               pwGateEl.textContent = "Leave blank to keep your current password.";
-  else if (!longEnough)        pwGateEl.textContent = passwordTooShortText();
-  else if (!matches)           pwGateEl.textContent = "Type the same password in both boxes.";
-  else if (!hasCurrent)        pwGateEl.textContent = "Enter your current password to confirm the change.";
-  else                         pwGateEl.textContent = "";
+  if (!pw && !confirm && !current) pwGateEl.textContent = "Leave blank to keep your current password.";
+  else if (!longEnough)            pwGateEl.textContent = passwordTooShortText();
+  else if (!matches)               pwGateEl.textContent = "Type the same password in both boxes.";
+  else if (!current)               pwGateEl.textContent = "Enter your current password to confirm the change.";
+  else                             pwGateEl.textContent = "";
 }
 
 [pwCurrentInput, pwInput, pwConfirmInput].forEach(el => {
-  el.addEventListener("input", refreshPasswordGate);
+  el.addEventListener("input", () => {
+    if (pwAsked) clearStatus();
+    refreshPasswordGate();
+  });
   el.addEventListener("blur", () => { pwTouched.add(el); refreshPasswordGate(); });
 });
 
@@ -373,25 +410,33 @@ refreshPasswordGate();
 
 document.getElementById("eaPasswordForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (pwBtn.disabled) return;
+  if (pwSending) return;
+
+  pwAsked = true;
+
+  const current = pwCurrentInput.value;
+  const pw = pwInput.value;
+  const confirm = pwConfirmInput.value;
+  const longEnough = passwordLongEnough(pw);
+  const matches = Boolean(confirm) && confirm === pw;
+
+  if (!current || !longEnough || !matches) {
+    refreshPasswordGate();
+    if (!longEnough)      showStatus(passwordTooShortText(), "error");
+    else if (!matches)    showStatus("Type the same password in both boxes.", "error");
+    else if (!current)    showStatus("Enter your current password to confirm the change.", "error");
+    return;
+  }
 
   pwSending = true;
-  pwBtn.disabled = true;
+  pwBtn.textContent = "Updating\u2026";
+  refreshPasswordGate();
   try {
     // Prove the current password before setting a new one.
     // updateUser() does not require it — Supabase will change the
     // password of whoever holds the session — so the check has to
     // happen here. Without it, an unattended or hijacked session is
     // a full account takeover that also locks the real owner out.
-    //
-    // signInWithPassword against the signed-in address is the
-    // re-authentication: it returns an error if the password is
-    // wrong, and refreshes the same session if it is right.
-    //
-    // The address is read from Auth here rather than closed over:
-    // this handler sits outside the IIFE above that holds `session`,
-    // and taking it from the session Auth itself reports keeps the
-    // check pinned to whoever is actually signed in.
     const { data: who, error: whoErr } = await supabaseClient.auth.getUser();
     if (whoErr || !who?.user?.email) {
       showStatus("You've been signed out. Sign in again to change your password.", "error");
@@ -418,28 +463,20 @@ document.getElementById("eaPasswordForm").addEventListener("submit", async (e) =
     pwCurrentInput.value = "";
     pwInput.value = "";
     pwConfirmInput.value = "";
+    pwAsked = false;
     showStatus("Password updated.", "success");
   } catch (err) {
     console.error("Couldn't update the password:", err);
     showStatus("Couldn't update your password.", "error");
   } finally {
     pwSending = false;
+    pwBtn.textContent = "Update Password";
     refreshPasswordGate();
   }
 });
 
 // ------------------------------------------------------------
 // Data subject access and portability — RA 10173 s.18
-//
-// export_my_data() takes no email parameter, deliberately: it reads
-// the caller's identity from their JWT, so there is no argument to
-// tamper with and no way to point it at somebody else. The download is
-// assembled in the browser from what the database returns, so nothing
-// is written to a server and no file sits anywhere waiting to be found.
-//
-// The blob URL is revoked immediately after the click. Left alive it
-// keeps a copy of the person's data in memory for as long as the tab
-// is open.
 // ------------------------------------------------------------
 const exportBtn  = document.getElementById("eaExportBtn");
 const exportNote = document.getElementById("eaExportNote");
@@ -453,8 +490,6 @@ if (exportBtn) {
       const { data, error } = await supabaseClient.rpc("export_my_data");
       if (error) throw error;
 
-      // Local date. This names a data-export receipt issued under
-      // RA 10173, where the date it carries is part of what it attests.
       const stamp = todayLocalISO();
       const blob  = new Blob([JSON.stringify(data, null, 2)],
                              { type: "application/json" });

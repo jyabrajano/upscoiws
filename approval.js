@@ -191,6 +191,37 @@ function formatApprovalStamp(iso) {
   });
 }
 
+// One row of a profile-change request's diff: a label plus either
+// "No modification." (requested value is the same as what's on file)
+// or the was → now treatment when it actually changed.
+//
+// Compared trimmed, not raw — a request that came back with the same
+// value but different whitespace isn't a real change, and showing
+// "X → X" would just look like a rendering bug rather than tell the
+// administrator anything.
+function renderApprovalDiffRow(label, was, now) {
+  const wasTrim = (was || "").trim();
+  const nowTrim = (now || "").trim();
+
+  if (wasTrim === nowTrim) {
+    return `
+      <div>
+        <span class="k">${escapeApprovalHtml(label)}</span>
+        <span class="v"><span class="no-mod">No modification.</span></span>
+      </div>`;
+  }
+
+  return `
+    <div>
+      <span class="k">${escapeApprovalHtml(label)}</span>
+      <span class="v">
+        <span class="was">${escapeApprovalHtml(was || "—")}</span>
+        <span class="arrow">→</span>
+        <span class="now">${escapeApprovalHtml(now || "—")}</span>
+      </span>
+    </div>`;
+}
+
 // Injected here rather than in each page's <style> block so the two
 // pages can't drift apart.
 function injectApprovalStyles() {
@@ -269,6 +300,7 @@ function injectApprovalStyles() {
   .req-diff .v { flex: 1; word-break: break-word; }
   .req-diff .was { color: var(--muted, #64748b); text-decoration: line-through; }
   .req-diff .now { color: var(--maroon, #7b1113); font-weight: 600; }
+  .req-diff .no-mod { color: var(--muted, #64748b); font-style: italic; }
   .req-actions { display: flex; gap: 8px; margin-top: 11px; }
   .req-actions button {
     flex: 1; padding: 8px 10px; border-radius: 8px;
@@ -1037,22 +1069,8 @@ async function mountAdminQueues(opts) {
               <div class="req-who">${escapeApprovalHtml(c.user_email)}</div>
               <div class="req-meta">Requested ${escapeApprovalHtml(formatApprovalStamp(c.requested_at))}</div>
               <div class="req-diff">
-                <div>
-                  <span class="k">Full name</span>
-                  <span class="v">
-                    <span class="was">${escapeApprovalHtml(c.current_full_name || "—")}</span>
-                    <span class="arrow">→</span>
-                    <span class="now">${escapeApprovalHtml(c.requested_full_name || "—")}</span>
-                  </span>
-                </div>
-                <div>
-                  <span class="k">Account no.</span>
-                  <span class="v">
-                    <span class="was">${escapeApprovalHtml(c.current_account_number || "—")}</span>
-                    <span class="arrow">→</span>
-                    <span class="now">${escapeApprovalHtml(c.requested_account_number || "—")}</span>
-                  </span>
-                </div>
+                ${renderApprovalDiffRow("Full name", c.current_full_name, c.requested_full_name)}
+                ${renderApprovalDiffRow("Account no.", c.current_account_number, c.requested_account_number)}
               </div>
               <div class="req-actions">
                 <button type="button" class="btn-approve" data-act="approve">Apply change</button>

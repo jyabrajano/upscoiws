@@ -1,13 +1,21 @@
 
 // ------------------------------------------------------------
-// Request Access stays disabled until two things are true: every
-// required box is filled, and every check has come back clean.
+// Request Access is a normal, always-clickable button — it is never
+// disabled. Pressing it while a request is already in flight is a
+// no-op (guarded by `sending`, not by the button's disabled state),
+// and pressing it again after a refusal simply tries again.
 //
-// What the form will not do is say which check failed. Once the
-// boxes are all filled, anything still blocking produces the
-// same single line. Naming the detail that clashed is how a
-// stranger works out who is already registered and under which
-// account number.
+// Nothing is said about the form until the button has actually been
+// pressed once. Typing wrong things into an empty form is not an
+// error yet; pressing Request Access is what asks the question, and
+// only then does the form answer it.
+//
+// Every refusal shows the same generic line EXCEPT one: an email
+// address that's already registered gets its own message, because
+// that's useful, actionable information for the person typing their
+// own address ("sign in instead"), not a clue about someone else's
+// account. Naming a clash on someone else's name or account number
+// would be — that stays generic.
 //
 // The gate is a convenience, not the guard. The real refusals
 // live in the database — unique constraints, RLS, and the
@@ -25,18 +33,19 @@ const DENIED =
 const ACCT_LENGTH_MSG =
   "LBP account numbers are default 10 digit, please input the valid account number!";
 
-// UP_MAIL_RESTRICTION_ENABLED, UP_MAIL_RE and UP_MAIL_MSG all now
-// come from config.js, which reads the toggle from the database
-// (up_mail_restriction_enabled()) instead of keeping a second
-// copy of it here. This page used to declare its own `false` with
-// a comment asking whoever changed the SQL to change this line
-// too — see the block in config.js for why that was the wrong
-// shape. Nothing to flip here any more; change the SQL.
+// Shown when the address they typed already has an account here.
+const EMAIL_TAKEN_MSG =
+  "This email address is already registered. Try signing in instead, or use " +
+  "\"Forgot password?\" on the sign-in page if you don't remember your password.";
+
+// UP_MAIL_RESTRICTION_ENABLED, UP_MAIL_RE and UP_MAIL_MSG all come
+// from config.js, which reads the toggle from the database
+// (up_mail_restriction_enabled()) instead of keeping a second copy
+// of it here.
 //
 // Note that UP_MAIL_RESTRICTION_ENABLED is a `let` over there and
-// its value can change mid-page when the answer arrives, so it
-// has to be read at check time rather than captured once. The
-// listener below re-runs the gate when it does.
+// its value can change mid-page when the answer arrives, so it has
+// to be read at check time rather than captured once.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const statusEl  = document.getElementById("status");
@@ -53,6 +62,11 @@ const emailInput   = document.getElementById("regEmail");
 const passInput    = document.getElementById("regPassword");
 const confirmInput = document.getElementById("regConfirmPassword");
 const acctListEl   = document.getElementById("regAcctList");
+
+// The button starts disabled in the markup so a form with no JS
+// doesn't look submittable. First thing this script does is take
+// that back off — from here on the button is never disabled again.
+submitBtn.disabled = false;
 
 let shown = "";
 
@@ -91,58 +105,19 @@ const acctList = attachAccountNumberList(
   { id: "regAccountNumber", required: false, onChange: () => accountsChanged() }
 );
 
-// ---- state the button reads ----
+// ---- state ----
 
 let nameClash = false;   // full name already on file
 let acctClash = false;   // one of the account numbers already on file
 let checking  = false;   // a duplicate check is queued or in flight
-let sending   = false;   // signUp is in flight
-let refused   = false;   // the last attempt was turned down
+let sending   = false;   // signUp is in flight — guards re-entrant submits
 let asked     = false;   // Request Access has been pressed at least once
 
 // Nothing on this form is called wrong until Request Access has been
-// pressed. Half-typed is not the same as incorrect, and a form that
-// starts correcting you at the second character reads as impatient --
-// it is scolding someone for not having finished yet.
-//
-// After the first press the form does judge live, so a correction
-// clears its own error as it is made. Making someone press again to
-// find out whether they fixed it is the other failure, and the more
-// annoying one.
-
-// ---- cooldown after a refused attempt ----
-//
-// `refused` already holds the button down until something on the
-// form changes, which covers an honest mistake. This covers the
-// other case: editing one character back and forth to fire the
-// duplicate checks and auth.signUp over and over. Each refusal
-// in a row waits longer, up to half a minute.
-//
-// Like the limiter in config.js, this is a courtesy — it lives
-// in the browser and can be skipped. Supabase Auth's own rate
-// limits are the ones that count.
-let attempts  = 0;
-let coolUntil = 0;
-let coolTimer = null;
-
-function coolingDown() {
-  return Date.now() < coolUntil;
-}
-
-function startCooldown() {
-  attempts += 1;
-  coolUntil = Date.now() + Math.min(30000, 2000 * attempts);
-  clearInterval(coolTimer);
-  // Ticks so the countdown is live, and stops itself once the
-  // wait is over — the button comes back without the person
-  // having to touch anything.
-  coolTimer = setInterval(() => {
-    if (!coolingDown()) clearInterval(coolTimer);
-    refresh();
-  }, 500);
-}
-
-// ---- what's blocking, without saying so out loud ----
+// pressed. From that first press on, a correction clears its own
+// error as it's made — but the notification itself only ever
+// appears as a result of pressing the button, never while just
+// typing into an untouched form.
 
 function acctInputs() {
   return Array.from(acctListEl.querySelectorAll("input"));
@@ -161,9 +136,8 @@ function requiredFilled() {
 // Every box that is stopping the form, collected in one pass.
 //
 // Short account numbers are deliberately NOT in `bad`: they don't
-// hold the button down, because the number is only judged when
-// Request Access is pressed. The press is what turns a number in
-// progress into a wrong one.
+// get flagged until Request Access is pressed. The press is what
+// turns a number in progress into a wrong one.
 function problems() {
   const bad = new Set();
   const short = new Set();
@@ -203,70 +177,30 @@ function paint(bad, short) {
   });
 }
 
+// Recomputes what's wrong and repaints the invalid-box outlines, but
+// never puts anything into the notification box on its own — that
+// only happens inside the submit handler, in response to an actual
+// press. Called after every keystroke (to keep the outlines and the
+// small "Checking…" hint current) and after every duplicate-check
+// result, but it does not call showStatus.
 function refresh() {
-  const { bad, short, domainBad } = problems();
-  const complete = requiredFilled();
-  const blocked  = bad.size > 0 || short.size > 0 || nameClash || acctClash || refused;
-
-  // RA 10173 s.16 -- the notice has to be shown before the data is
-  // collected, not after. That still holds: nothing is sent until the
-  // box is ticked. It is enforced at the press now rather than by a
-  // dead button, which is the same guarantee with a reason attached.
-  const acknowledged = !privacyAck || privacyAck.checked;
-  const cooling = coolingDown();
-
+  const { bad, short } = problems();
   paint(bad, short);
 
-  // The button stays pressable while the form is wrong. A disabled
-  // button is the worst way to report a problem: it withholds the
-  // action and the reason at the same time, so someone staring at a
-  // greyed-out Request Access has nothing to read and nothing to try.
-  // Let them press it, then say what is wrong.
-  //
-  // Only states where pressing genuinely cannot achieve anything
-  // disable it: a request already in flight, or a cooldown after
-  // repeated failures.
-  submitBtn.disabled = sending || cooling;
-
-  if (sending) { gateEl.textContent = ""; return; }
-
-  if (cooling) {
-    gateEl.textContent = `Please wait ${Math.ceil((coolUntil - Date.now()) / 1000)}s before trying again.`;
-    return;
-  }
-
-  // Before the first press the form says nothing about itself beyond
-  // a neutral prompt, and shows no red.
-  if (!asked) {
-    gateEl.textContent = "";
-    clearStatus();
-    return;
-  }
-
+  if (!asked) { gateEl.textContent = ""; return; }
   gateEl.textContent = checking ? "Checking\u2026" : "";
-
-  // Specific complaints outrank the catch-all, so someone is told
-  // which rule they missed rather than just that something is wrong.
-  if (short.size > 0)         { showStatus(ACCT_LENGTH_MSG, "error"); return; }
-  if (domainBad)              { showStatus(UP_MAIL_MSG, "error"); return; }
-  if (!acknowledged)          { showStatus("Please read the Privacy Notice and Terms of Use, then tick the box to continue.", "error"); return; }
-  if (!complete)              { showStatus("Fill in every required field to continue.", "error"); return; }
-  if (checking)               { clearStatus(); return; }
-
-  if (blocked) showStatus(DENIED, "error");
-  else clearStatus();
 }
 
 // ---- duplicate checks ----
 //
-// Both go through SECURITY DEFINER functions that answer yes or
-// no and never say whose row matched. A check that can't be run
-// is treated as "can't tell": the database still refuses on
-// submit, so a network hiccup shouldn't lock anyone out here.
+// Both go through SECURITY DEFINER functions that answer yes or no
+// and never say whose row matched. A check that can't be run is
+// treated as "can't tell": the database still refuses on submit, so
+// a network hiccup shouldn't lock anyone out here.
 
-// A slow answer to an old question must not unlock the button
-// for a newer one, so each round carries a number and only the
-// latest is allowed to settle anything.
+// A slow answer to an old question must not settle anything for a
+// newer one, so each round carries a number and only the latest is
+// allowed to update the flags.
 let round = 0;
 
 const runChecks = debounce(async () => {
@@ -291,21 +225,21 @@ const runChecks = debounce(async () => {
 }, 450);
 
 function nameChanged() {
-  refused = false;
+  if (asked) clearStatus();
   checking = true;
   refresh();
   runChecks();
 }
 
 function accountsChanged() {
-  refused = false;
+  if (asked) clearStatus();
   checking = true;
   refresh();
   runChecks();
 }
 
 function detailsChanged() {
-  refused = false;
+  if (asked) clearStatus();
   refresh();
 }
 
@@ -318,30 +252,25 @@ function detailsChanged() {
 // Delegated, because boxes are added and removed as you go.
 acctListEl.addEventListener("input", accountsChanged);
 
-// Leaving a box used to be what earned it a red outline. It no longer
-// is -- the press is -- so there is nothing to record on blur, and the
-// listener that recorded it has gone with the WeakSet it fed.
-
 refresh();
 
-// config.js asks the database whether the UP Mail restriction is
-// on, and the answer lands a moment after this page has already
-// painted a gate based on the assumed `false`. Without this, an
-// address typed in that first moment keeps whatever verdict it
-// got until the next keystroke.
+// config.js asks the database whether the UP Mail restriction is on,
+// and the answer lands a moment after this page has already painted
+// based on the assumed `false`. Re-run the (silent) recompute when
+// it changes so a stale verdict doesn't stick around.
 onUpMailRestrictionChange(refresh);
 
 if (privacyAck) privacyAck.addEventListener("change", refresh);
 
 // ---- submit ----
+//
+// Everything the notification box ever shows originates here. No
+// other code path calls showStatus.
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (submitBtn.disabled) return;
+  if (sending) return;
 
-  // The press is what turns "not finished" into "wrong". From here on
-  // the form reports what it finds, and keeps reporting live so that
-  // fixing something clears its own error.
   asked = true;
 
   nameBuilder.tidy();
@@ -350,44 +279,48 @@ form.addEventListener("submit", async (e) => {
   const password = passInput.value;
   const accts    = acctList.validate();
 
-  // Everything the form can judge for itself, judged here, before a
-  // single byte leaves the browser. refresh() has already been told
-  // to speak up, so it writes the specific reason.
   const { bad, short, domainBad } = problems();
   const acknowledged = !privacyAck || privacyAck.checked;
+  paint(bad, short);
 
-  if (!accts.ok || bad.size > 0 || short.size > 0 || domainBad ||
-      !acknowledged || !requiredFilled() || nameClash || acctClash) {
-    refresh();
-    // Send focus to the first box at fault. Being told the form is
-    // wrong is not much use on a long page if finding the box is the
-    // next puzzle.
+  // Specific complaints outrank the catch-all, so someone is told
+  // which rule they missed rather than just that something is wrong.
+  if (short.size > 0) {
+    showStatus(ACCT_LENGTH_MSG, "error", true);
+  } else if (domainBad) {
+    showStatus(UP_MAIL_MSG, "error", true);
+  } else if (!acknowledged) {
+    showStatus("Please read the Privacy Notice and Terms of Use, then tick the box to continue.", "error", true);
+  } else if (!requiredFilled()) {
+    showStatus("Fill in every required field to continue.", "error", true);
+  } else if (checking) {
+    // A duplicate check may still be in flight from the last
+    // keystroke. Wait rather than refuse: the final check below is
+    // authoritative anyway, and refusing here would mean a fast
+    // typist gets turned away for being fast.
+    gateEl.textContent = "Checking\u2026";
+    return;
+  } else if (!accts.ok || bad.size > 0 || nameClash || acctClash) {
+    showStatus(DENIED, "error", true);
+  }
+
+  if (bad.size > 0 || short.size > 0 || domainBad || !acknowledged ||
+      !requiredFilled() || !accts.ok || nameClash || acctClash) {
     const firstBad = [firstInput, lastInput, emailInput, passInput, confirmInput, ...acctInputs()]
       .find(el => bad.has(el) || short.has(el));
     if (firstBad) firstBad.focus({ preventScroll: true });
-    statusEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    return;
-  }
-
-  // A duplicate check may still be in flight from the last keystroke.
-  // Waiting is better than refusing: the final check below is
-  // authoritative anyway, and refusing here would mean a fast typist
-  // gets turned away for being fast.
-  if (checking) {
-    refresh();
     return;
   }
 
   sending = true;
-  submitBtn.disabled = true;
   submitBtn.textContent = "Requesting\u2026";
   clearStatus();
 
   try {
-    // Last look before the account is made — the form can sit
-    // open long enough for someone else to take the name. The
-    // cache in config.js would answer from up to thirty seconds
-    // ago, which is exactly the window that matters here.
+    // Last look before the account is made — the form can sit open
+    // long enough for someone else to take the name. The cache in
+    // config.js would answer from up to thirty seconds ago, which is
+    // exactly the window that matters here.
     forgetDuplicateChecks();
     const [takenName, clashes] = await Promise.all([
       fullNameTaken(fullName),
@@ -402,27 +335,6 @@ form.addEventListener("submit", async (e) => {
       password,
       options: {
         emailRedirectTo: new URL("index.html", window.location.href).href,
-        // Only these two are read. handle_new_user() takes
-        // full_name and account_number off raw_user_meta_data and
-        // ignores everything else; profiles.first_name,
-        // middle_initial, last_name and suffix are then derived
-        // from full_name by normalize_profile_fields_trg, which
-        // runs on every insert and update.
-        //
-        // middle_initial and suffix used to be sent here too, and
-        // nothing ever read them. Wiring them up was not an
-        // option: the trigger would overwrite both from full_name
-        // the moment the row landed, so the copy could only ever
-        // be ignored or be wrong. Sending them was also worse
-        // than useless — raw_user_meta_data is writable by the
-        // account holder through auth.updateUser({ data }) and
-        // travels in the JWT, so it was an unvalidated second
-        // spelling of someone's name sitting where a later reader
-        // could mistake it for the authoritative one.
-        //
-        // full_name is already built from every name box,
-        // middle initial and suffix included (buildFullName() in
-        // config.js), so nothing is lost by dropping them.
         data: {
           full_name: fullName,
           account_number: accts.value,
@@ -431,28 +343,20 @@ form.addEventListener("submit", async (e) => {
     });
     if (error) throw error;
 
-    // Supabase hands back a user with no identities when the
-    // address already has an account, rather than an error —
-    // that's its own way of not confirming who's registered.
-    // Same treatment here as any other refusal.
+    // Supabase hands back a user with no identities when the address
+    // already has an account, rather than an error. It's the
+    // person's own address they just typed, so telling them plainly
+    // is useful rather than a leak — flagged distinctly so the catch
+    // block can give this one case its own message and leave every
+    // other refusal generic.
     if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-      throw new Error("blocked");
+      const alreadyRegistered = new Error("email_taken");
+      alreadyRegistered.emailTaken = true;
+      throw alreadyRegistered;
     }
 
     const needsConfirm = !data.session && data.user && !data.user.email_confirmed_at;
 
-    // Written before signOut(), because record_privacy_notice_ack()
-    // identifies the person from their JWT and there is no JWT after.
-    // Only possible when signUp returned a session -- with email
-    // confirmation on it does not.
-    //
-    // When it does not, the acknowledgement is parked in this browser
-    // and redeemed at first sign-in. This page is the only place that
-    // actually SHOWS the notice and watches the box get ticked, so it
-    // is the only place entitled to say the acknowledgement happened.
-    // page-index.js used to assert it on every sign-in regardless,
-    // which meant Google SSO users -- who never load this page --
-    // collected receipts for a notice they were never shown.
     if (data.session) await recordPrivacyNoticeAck();
     else rememberPendingPrivacyAck(email);
 
@@ -461,12 +365,16 @@ form.addEventListener("submit", async (e) => {
     window.location.href = "index.html?registered=" + (needsConfirm ? "confirm" : "1");
     return;
   } catch (err) {
-    // The console keeps the real reason for whoever maintains
-    // this. The page doesn't.
+    // The console keeps the real reason for whoever maintains this.
+    // The page shows the generic line to everyone EXCEPT the one
+    // case that's genuinely the person's own business: their own
+    // address already having an account here.
     console.error("Registration failed:", err);
-    refused = true;
-    startCooldown();
-    showStatus(DENIED, "error", true);
+    if (err && err.emailTaken) {
+      showStatus(EMAIL_TAKEN_MSG, "error", true);
+    } else {
+      showStatus(DENIED, "error", true);
+    }
   } finally {
     sending = false;
     submitBtn.textContent = "Request Access";
