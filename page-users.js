@@ -2,7 +2,7 @@
 // BUILD_ID there whenever this file changes, so a stale copy on the
 // server announces itself instead of looking like a broken feature.
 window.__BUILD = window.__BUILD || {};
-window.__BUILD["users"] = "2026-08-07-h";
+window.__BUILD["users"] = "2026-08-07-i";
 
 
 // ------------------------------------------------------------
@@ -15,11 +15,22 @@ window.__BUILD["users"] = "2026-08-07-h";
 // ------------------------------------------------------------
 
 (async () => {
+  const gateNote = document.getElementById("gateNote");
+
+  // requireSession() returns null for several reasons. Most of them
+  // redirect or draw their own notice, but "couldn't reach the server"
+  // leaves this page sitting on "Checking your access…" with nothing
+  // to read and nothing to do, which is indistinguishable from a page
+  // that failed to load. Say so instead.
   const session = await requireSession();
-  if (!session) return;
+  if (!session) {
+    gateNote.textContent =
+      "Couldn't confirm your access. If this doesn't clear on a reload, " +
+      "sign in again from the home page.";
+    return;
+  }
 
   const user = session.user;
-  const gateNote = document.getElementById("gateNote");
 
   // checkIsAdmin() returns null when the check itself failed, which is
   // not the same as being refused. Redirecting on both meant a

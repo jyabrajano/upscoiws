@@ -66,6 +66,25 @@ function todayLocalISO() {
 // false for them (see deploy-schema.sql), so they fall through
 // to the profile read below and are refused like anyone else.
 // ------------------------------------------------------------
+// A rejected token and a flaky network both arrive here as "the query
+// failed", and they need opposite responses. A network problem should
+// leave the session alone and invite a retry. A rejected token cannot
+// be retried into working — the only way out is to sign in again — and
+// treating it as transient is what produces a page that sits on
+// "Checking your access…" forever with a Retry button that can never
+// succeed.
+//
+// PostgREST reports an expired or invalid JWT as PGRST301 or a bare
+// 401. The message check is a backstop for the shapes that carry
+// neither, which do occur across gateway versions.
+function isAuthError(error) {
+  if (!error) return false;
+  if (error.code === "PGRST301" || error.code === "401") return true;
+  if (error.status === 401 || error.status === 403) return true;
+  return /jwt|token|unauthor|not authenticated|session.*expired/i
+    .test(String(error.message || ""));
+}
+
 async function getApprovalState(email) {
   try {
     const { data: isAdmin } = await supabaseClient.rpc("is_admin");
@@ -90,6 +109,13 @@ async function getApprovalState(email) {
         "Run deploy-schema.sql in Supabase → SQL Editor."
       );
       return { status: "setup", isAdmin: false, reason: null };
+    }
+    // The session in storage is no longer accepted by the server. This
+    // is a dead end, not a delay, and it has to be said so — see
+    // isAuthError() above.
+    if (isAuthError(error)) {
+      console.warn("Session rejected by the server; signing out.");
+      return { status: "expired", isAdmin: false, reason: null };
     }
     console.error("Couldn't read your approval status:", error);
     // Still fails closed — "unavailable" is not "approved", and
@@ -125,6 +151,17 @@ async function requireSession() {
   }
 
   const state = await getApprovalState(session.user.email);
+
+  // A session the server no longer accepts. Clear it locally and send
+  // the person somewhere they can act, rather than leaving them on a
+  // half-drawn page waiting for an approval check that will never
+  // succeed. Local scope so this doesn't cascade into their other
+  // devices — see idleSignOut().
+  if (state.status === "expired") {
+    try { await supabaseClient.auth.signOut({ scope: "local" }); } catch (_) {}
+    window.location.replace("index.html?access=expired");
+    return null;
+  }
 
   // A status we couldn't read is not a status we can act on. Block the
   // page — returning null stops every caller the same way a refusal
@@ -236,7 +273,7 @@ function showConnectionNotice() {
 // Delete the stamp by removing the call at the bottom of this block.
 // The constants are harmless on their own.
 // ============================================================
-const BUILD_ID = "2026-08-07-h";
+const BUILD_ID = "2026-08-07-i";
 window.__BUILD = window.__BUILD || {};
 window.__BUILD.config = BUILD_ID;
 
@@ -413,7 +450,16 @@ async function idleSignOut() {
   idleWatching = false;
   idleDismissWarning();
   try { localStorage.removeItem(IDLE_KEY); } catch (_) {}
-  try { await supabaseClient.auth.signOut(); } catch (_) {}
+  // scope: "local" — this browser only.
+  //
+  // signOut() defaults to global, which revokes the refresh token for
+  // every session the person has anywhere: other tabs, their phone, a
+  // machine at another desk. An unattended terminal timing out is not
+  // a reason to sign someone out of their own phone, and the tabs it
+  // hits do not fail cleanly — they still hold a session object that
+  // looks valid, so they wedge on the next request rather than
+  // returning to the sign-in page.
+  try { await supabaseClient.auth.signOut({ scope: "local" }); } catch (_) {}
   // replace(), not href: the page behind this still holds someone's
   // name and account numbers, and the back button should not walk
   // back onto it.

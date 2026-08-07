@@ -1,0 +1,84 @@
+READ ME FIRST — this folder is intentionally incomplete
+=======================================================
+
+Two files belong here and are NOT in this archive:
+
+    vendor/supabase.js            @supabase/supabase-js  2.112.1
+    vendor/xlsx.full.min.js       SheetJS Community Ed.  0.20.3
+
+Until they are here, every page loads, renders, and then does nothing:
+sign-in, the dashboard, and the statement of account all depend on the
+Supabase client. The browser console will show 404s for the two paths
+above. That is the symptom — there is no other.
+
+
+WHY THEY ARE NOT INCLUDED
+-------------------------
+They are third-party libraries. Shipping a copy inside this archive
+would mean you are trusting whoever built the archive to have fetched
+the right bytes, with no way to check. sync-vendor.js fetches them from
+the vendor's own CDN and records a SHA-384 of exactly what arrived, so
+the check is yours rather than someone else's.
+
+
+HOW TO FILL IT IN
+-----------------
+From the full project folder (the one holding config.js), with Node
+installed and a working internet connection:
+
+    node sync-vendor.js
+
+It downloads both files into vendor/, verifies each against
+vendor-lock.json, and refuses to write anything if a hash does not
+match. Then copy the resulting vendor/ folder into the web root
+alongside index.html.
+
+If you are deploying the deploy-only archive, run the command on your
+own machine against the full project archive, then upload the two
+files it produces.
+
+
+NO NODE? DOWNLOAD THEM BY HAND
+------------------------------
+Open each URL in a browser, save the file, and upload it to vendor/
+under the exact filename shown. The names matter — the pages request
+these two paths literally.
+
+    https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.1
+        save as  vendor/supabase.js
+
+    https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js
+        save as  vendor/xlsx.full.min.js
+
+Note there is no path after the version on the first URL. jsDelivr
+resolves a bare package URL to the package's own browser entry point.
+Adding a guessed path like /dist/umd/supabase.js gives you "Couldn't
+find the requested file" — that layout existed in older releases and
+does not any more.
+
+Run `node sync-vendor.js` later when convenient to generate
+vendor-lock.json and confirm the bytes match.
+
+
+WHY NOT JUST USE A CDN
+----------------------
+The pages used to load both libraries from cdn.jsdelivr.net, and the
+Content-Security-Policy had to name that origin in script-src to allow
+it. Naming an origin trusts EVERY script on it, not the two wanted —
+a much larger hole than the one all the other CSP work closes. The
+supabase tag was also @2, a floating major: whatever the CDN served at
+page-load time ran with full privileges, so a bad release or a stolen
+npm token reached production on the next reload with nothing in the
+repo changing.
+
+script-src is now 'self' alone. That is only true while these files are
+served from this host, so please do not "fix" a 404 here by pointing a
+script tag back at a CDN — it would have to be added back to the CSP in
+ten places (nine pages plus .htaccess) and would undo the reason this
+folder exists.
+
+
+A NOTE ON THIS FILE
+-------------------
+.htaccess refuses to serve .txt, so this note is not reachable from the
+web even though it sits in the web root.

@@ -2,7 +2,7 @@
 // BUILD_ID there whenever this file changes, so a stale copy on the
 // server announces itself instead of looking like a broken feature.
 window.__BUILD = window.__BUILD || {};
-window.__BUILD["registration"] = "2026-08-07-h";
+window.__BUILD["registration"] = "2026-08-07-i";
 
 
 // ------------------------------------------------------------
