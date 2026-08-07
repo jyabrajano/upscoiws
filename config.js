@@ -48,6 +48,43 @@ function todayLocalISO() {
 }
 
 // ------------------------------------------------------------
+// HTML escaping
+//
+// The one copy. This used to be three byte-identical copies —
+// escapeApprovalHtml() in approval.js, escapeHtml() in
+// page-dashboard.js, escapeHtml() in page-soa.js — which is three
+// chances for one of them to be "improved" and two chances for the
+// improvement not to reach the other files. That is a bad property
+// for any function and a worse one for the thing standing between
+// a stored name and innerHTML.
+//
+// It lives here because config.js is the first script on every page
+// that has scripts at all (see the <script> block in each of the
+// seven; privacy.html and terms.html carry no JS), so anything
+// defined here is in scope for approval.js, sheets-config.js and
+// every page-*.js without ordering constraints of its own.
+//
+// Covers text AND attribute contexts: the quote and backtick
+// replacements are what make `value="${escapeHtml(x)}"` safe, and
+// they are the reason this cannot be swapped for the shorter
+// textContent/innerHTML round trip, which leaves quotes alone.
+//
+// Not a substitute for building nodes directly. Where a builder is
+// already doing createElement/textContent — showConnectionNotice()
+// below, appendMsg() in page-dashboard.js — leave it alone; that
+// path has no escaping to get wrong.
+// ------------------------------------------------------------
+function escapeHtml(str) {
+  return (str == null ? "" : String(str))
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/`/g, "&#96;");
+}
+
+// ------------------------------------------------------------
 // Reads the signed-in user's approval state.
 // Returns status: "approved" | "pending" | "rejected" | "disabled"
 // | "missing" | "unavailable", plus the reason when there is one.

@@ -405,21 +405,6 @@ function formatDate(iso) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-// Text AND attribute contexts. The textContent/innerHTML round
-// trip that used to be here escapes & < > but not quotes, because
-// a text node has no need of it — which makes it unsafe the
-// moment the result lands inside value="..." or data-x="...".
-// See the same fix in approval.js.
-function escapeHtml(str) {
-  return (str == null ? "" : String(str))
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-    .replace(/`/g, "&#96;");
-}
-
 const aiLauncher = document.getElementById("aiLauncher");
 const aiWidget = document.getElementById("aiWidget");
 const aiClose = document.getElementById("aiClose");

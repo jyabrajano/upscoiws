@@ -272,7 +272,7 @@ async function loadTransactions(fromISO, toISO) {
     // "All accounts" only says something when there's more than one.
     const allLabel = myAccounts.length > 1 ? "All accounts" : "All";
     select.innerHTML = `<option value="">${allLabel}</option>` +
-      // escapeHtml is defined below; the account numbers are
+      // escapeHtml comes from config.js; the account numbers are
       // normalised digits today, but the picker shouldn't be the
       // one place that assumes that.
       myAccounts.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join("");
@@ -481,21 +481,6 @@ function printStatement() {
   if (!filteredTxns || filteredTxns.length === 0) return;
   updatePrintSub();
   window.print();
-}
-
-// Text AND attribute contexts. The textContent/innerHTML round
-// trip that used to be here escapes & < > but not quotes, because
-// a text node has no need of it — which makes it unsafe the
-// moment the result lands inside value="..." or data-x="...".
-// See the same fix in approval.js.
-function escapeHtml(str) {
-  return (str == null ? "" : String(str))
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-    .replace(/`/g, "&#96;");
 }
 
 function exportToExcel() {

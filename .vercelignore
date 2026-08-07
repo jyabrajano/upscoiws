@@ -1,0 +1,34 @@
+# Belt and braces. These are already excluded by .gitignore, so they
+# should never reach the repo Vercel builds from — this file is what
+# catches the day one of them does, because a Vercel deploy publishes
+# the working tree and not just what git tracks.
+#
+# deploy-schema.sql is the whole database design. Not a key — security
+# lives in the database, not in secrecy — but a free map for anyone
+# poking at the API.
+deploy-schema.sql
+patch-*.sql
+*.sql
+
+# Build scripts. They read config.js and rewrite the pages; they are
+# run before a deploy, never served by one.
+sync-csp.js
+sync-vendor.js
+sync-sri.js
+vendor-lock.json
+sri-lock.json
+
+# Pasted into Supabase -> Authentication -> Email Templates. Never served.
+email-*.html
+
+# Apache config. Inert on Vercel — vercel.json is what applies here.
+# Shipping it invites someone to edit it and expect an effect.
+.htaccess
+_htaccess
+
+README.md
+LEGAL-COMPLIANCE.md
+DEPLOY.txt
+node_modules/
+.DS_Store
+Thumbs.db

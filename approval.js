@@ -173,15 +173,6 @@ async function notifyDecision(kind, payload) {
 //
 // Doing it with string replacement rather than the DOM because the
 // DOM route cannot express the attribute case at all.
-function escapeApprovalHtml(str) {
-  return (str == null ? "" : String(str))
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-    .replace(/`/g, "&#96;");
-}
 
 function formatApprovalStamp(iso) {
   if (!iso) return "";
@@ -206,18 +197,18 @@ function renderApprovalDiffRow(label, was, now) {
   if (wasTrim === nowTrim) {
     return `
       <div>
-        <span class="k">${escapeApprovalHtml(label)}</span>
+        <span class="k">${escapeHtml(label)}</span>
         <span class="v"><span class="no-mod">No modification.</span></span>
       </div>`;
   }
 
   return `
     <div>
-      <span class="k">${escapeApprovalHtml(label)}</span>
+      <span class="k">${escapeHtml(label)}</span>
       <span class="v">
-        <span class="was">${escapeApprovalHtml(was || "—")}</span>
+        <span class="was">${escapeHtml(was || "—")}</span>
         <span class="arrow">→</span>
-        <span class="now">${escapeApprovalHtml(now || "—")}</span>
+        <span class="now">${escapeHtml(now || "—")}</span>
       </span>
     </div>`;
 }
@@ -810,20 +801,6 @@ async function mountAdminQueues(opts) {
   const filterNote  = filterEl ? filterEl.querySelector('[data-role="note"]') : null;
   const suggestEl   = filterEl ? filterEl.querySelector('[data-role="suggest"]') : null;
 
-  // Temporary, and safe to delete once the filter is confirmed working.
-  // It exists because "the filter doesn't appear" has three completely
-  // different causes that look identical from the outside: the markup
-  // is missing (old dashboard.html), the option was never passed (old
-  // page-dashboard.js), or the wiring ran fine and the queue is simply
-  // empty. This says which, in one line, without anyone having to
-  // reason about it.
-  console.info(
-    "[approval.js] registration filter —",
-    filterEl ? "container found" : "NO container (old dashboard.html, or filterEl not passed)",
-    "| input:", !!filterInput,
-    "| suggestions:", !!suggestEl
-  );
-
   if (registrationsEl) registrationsEl.innerHTML = '<div class="queue-empty">Loading…</div>';
   if (changesEl) changesEl.innerHTML = '<div class="queue-empty">Loading…</div>';
 
@@ -869,11 +846,11 @@ async function mountAdminQueues(opts) {
 
   function registrationCard(r) {
     return `
-      <div class="req-card" data-kind="registration" data-email="${escapeApprovalHtml(r.email)}">
-        <div class="req-who">${escapeApprovalHtml(r.full_name || "(no name given)")}</div>
-        <div class="req-meta">${escapeApprovalHtml(r.email)} · applied ${escapeApprovalHtml(formatApprovalStamp(r.submitted_at))}</div>
+      <div class="req-card" data-kind="registration" data-email="${escapeHtml(r.email)}">
+        <div class="req-who">${escapeHtml(r.full_name || "(no name given)")}</div>
+        <div class="req-meta">${escapeHtml(r.email)} · applied ${escapeHtml(formatApprovalStamp(r.submitted_at))}</div>
         <div class="req-diff">
-          <div><span class="k">Account no.</span><span class="v">${escapeApprovalHtml(r.account_number || "— not provided —")}</span></div>
+          <div><span class="k">Account no.</span><span class="v">${escapeHtml(r.account_number || "— not provided —")}</span></div>
         </div>
         <div class="req-actions">
           <button type="button" class="btn-approve" data-act="approve">Approve access</button>
@@ -901,12 +878,12 @@ async function mountAdminQueues(opts) {
   // that got entity-encoded.
   function highlight(text, query) {
     const s = String(text == null ? "" : text);
-    if (!query) return escapeApprovalHtml(s);
+    if (!query) return escapeHtml(s);
     const at = s.toLowerCase().indexOf(query);
-    if (at === -1) return escapeApprovalHtml(s);
-    return escapeApprovalHtml(s.slice(0, at)) +
-           "<mark>" + escapeApprovalHtml(s.slice(at, at + query.length)) + "</mark>" +
-           escapeApprovalHtml(s.slice(at + query.length));
+    if (at === -1) return escapeHtml(s);
+    return escapeHtml(s.slice(0, at)) +
+           "<mark>" + escapeHtml(s.slice(at, at + query.length)) + "</mark>" +
+           escapeHtml(s.slice(at + query.length));
   }
 
   // What typing a suggestion puts in the box. full_name is unique in
@@ -1065,9 +1042,9 @@ async function mountAdminQueues(opts) {
     if (changesEl) {
       changesEl.innerHTML = changes.length
         ? changes.map(c => `
-            <div class="req-card" data-kind="change" data-id="${escapeApprovalHtml(c.id)}">
-              <div class="req-who">${escapeApprovalHtml(c.user_email)}</div>
-              <div class="req-meta">Requested ${escapeApprovalHtml(formatApprovalStamp(c.requested_at))}</div>
+            <div class="req-card" data-kind="change" data-id="${escapeHtml(c.id)}">
+              <div class="req-who">${escapeHtml(c.user_email)}</div>
+              <div class="req-meta">Requested ${escapeHtml(formatApprovalStamp(c.requested_at))}</div>
               <div class="req-diff">
                 ${renderApprovalDiffRow("Full name", c.current_full_name, c.requested_full_name)}
                 ${renderApprovalDiffRow("Account no.", c.current_account_number, c.requested_account_number)}
@@ -1258,14 +1235,14 @@ async function mountAdminManager(container, onChanged) {
     if (!requests.length) return "";
     const rows = requests.map(r => {
       const who = r.target_name
-        ? `${escapeApprovalHtml(r.target_name)}`
-        : escapeApprovalHtml(r.target_email);
+        ? `${escapeHtml(r.target_name)}`
+        : escapeHtml(r.target_email);
       return `
-      <li data-id="${escapeApprovalHtml(r.id)}">
+      <li data-id="${escapeHtml(r.id)}">
         <div class="rq-who">Remove administrator access for ${who}</div>
         <div class="rq-meta">
-          ${escapeApprovalHtml(r.target_email)} ·
-          asked by ${escapeApprovalHtml(r.requested_by)}${r.reason ? ` · ${escapeApprovalHtml(r.reason)}` : ""}
+          ${escapeHtml(r.target_email)} ·
+          asked by ${escapeHtml(r.requested_by)}${r.reason ? ` · ${escapeHtml(r.reason)}` : ""}
         </div>
         <div class="rq-actions">
           <button type="button" class="rq-yes" data-act="approve">Approve</button>
@@ -1287,31 +1264,31 @@ async function mountAdminManager(container, onChanged) {
     let control;
     if (a.is_invite) {
       control = isMainAdmin
-        ? `<button type="button" class="admin-cancel-invite" data-email="${escapeApprovalHtml(a.email)}">Cancel invite</button>`
+        ? `<button type="button" class="admin-cancel-invite" data-email="${escapeHtml(a.email)}">Cancel invite</button>`
         : '<span class="admin-row-locked" title="Only a main administrator can cancel an invitation">—</span>';
     } else if (a.is_you) {
       control = '<span class="admin-row-locked" title="Ask another administrator to remove your access">—</span>';
     } else if (a.is_main) {
       control = '<span class="admin-row-locked" title="A main administrator\'s access can\'t be removed here">—</span>';
     } else if (isMainAdmin) {
-      control = `<button type="button" class="admin-remove" data-email="${escapeApprovalHtml(a.email)}">Remove</button>`;
+      control = `<button type="button" class="admin-remove" data-email="${escapeHtml(a.email)}">Remove</button>`;
     } else if (a.has_pending_removal) {
       control = '<span class="admin-tag">removal requested</span>';
     } else {
-      control = `<button type="button" class="admin-request" data-email="${escapeApprovalHtml(a.email)}">Request removal</button>`;
+      control = `<button type="button" class="admin-request" data-email="${escapeHtml(a.email)}">Request removal</button>`;
     }
 
     return `
       <li class="admin-row">
         <div class="admin-row-main">
-          <span class="admin-email">${escapeApprovalHtml(a.email)}</span>
+          <span class="admin-email">${escapeHtml(a.email)}</span>
           ${a.is_main ? '<span class="admin-tag you">main</span>' : ""}
           ${a.is_you ? '<span class="admin-tag you">you</span>' : ""}
           ${a.is_invite
-            ? `<span class="admin-tag">invited${a.expires_at ? ` · expires ${escapeApprovalHtml(formatApprovalStamp(a.expires_at))}` : ""}</span>`
+            ? `<span class="admin-tag">invited${a.expires_at ? ` · expires ${escapeHtml(formatApprovalStamp(a.expires_at))}` : ""}</span>`
             : (a.has_account ? "" : '<span class="admin-tag">not registered yet</span>')}
           ${a.has_pending_removal && isMainAdmin ? '<span class="admin-tag">removal requested</span>' : ""}
-          ${a.note ? `<div class="admin-note-text">${escapeApprovalHtml(a.note)}</div>` : ""}
+          ${a.note ? `<div class="admin-note-text">${escapeHtml(a.note)}</div>` : ""}
         </div>
         ${control}
       </li>`;
@@ -1571,7 +1548,7 @@ async function mountUserDirectory(container, onChanged) {
       u.is_main ? "main admin" : (u.is_admin ? "admin" : ""),
       u.approval_status !== "approved" ? u.approval_status : "",
       u.has_pending_change ? "change pending" : "",
-    ].filter(Boolean).map(t => `<span class="admin-tag">${escapeApprovalHtml(t)}</span>`).join("");
+    ].filter(Boolean).map(t => `<span class="admin-tag">${escapeHtml(t)}</span>`).join("");
 
     const offTag = u.disabled ? '<span class="admin-tag off">disabled</span>' : "";
 
@@ -1603,10 +1580,10 @@ async function mountUserDirectory(container, onChanged) {
     ].filter(Boolean).join("\n          ");
 
     return `
-      <div class="dir-row${u.disabled ? " is-disabled" : ""}" data-email="${escapeApprovalHtml(u.email)}">
-        <div class="dir-who">${escapeApprovalHtml(name)} ${tags}${offTag}</div>
-        <div class="dir-meta">${escapeApprovalHtml(u.email)}</div>
-        <div class="dir-accts">${escapeApprovalHtml(u.account_number || "— no account number —")}</div>
+      <div class="dir-row${u.disabled ? " is-disabled" : ""}" data-email="${escapeHtml(u.email)}">
+        <div class="dir-who">${escapeHtml(name)} ${tags}${offTag}</div>
+        <div class="dir-meta">${escapeHtml(u.email)}</div>
+        <div class="dir-accts">${escapeHtml(u.account_number || "— no account number —")}</div>
         <div class="dir-actions">
           ${buttons || '<span class="dir-locked">No actions available</span>'}
         </div>
@@ -1625,11 +1602,11 @@ async function mountUserDirectory(container, onChanged) {
       : entry.actor_email;
 
     return byThem
-      ? `<strong>${escapeApprovalHtml(user.full_name || user.email)}</strong>
-         <span class="log-act">${escapeApprovalHtml(words[0])}</span>
-         ${escapeApprovalHtml(other)}`
-      : `<span class="log-act">${escapeApprovalHtml(words[1])}</span>
-         <strong>${escapeApprovalHtml(other)}</strong>`;
+      ? `<strong>${escapeHtml(user.full_name || user.email)}</strong>
+         <span class="log-act">${escapeHtml(words[0])}</span>
+         ${escapeHtml(other)}`
+      : `<span class="log-act">${escapeHtml(words[1])}</span>
+         <strong>${escapeHtml(other)}</strong>`;
   }
 
   function actionDetail(entry) {
@@ -1664,9 +1641,9 @@ async function mountUserDirectory(container, onChanged) {
             const detail = actionDetail(entry);
             return `
               <div class="log-row">
-                <div class="log-when">${escapeApprovalHtml(formatApprovalStamp(entry.at))}</div>
+                <div class="log-when">${escapeHtml(formatApprovalStamp(entry.at))}</div>
                 <div class="log-what">${actionLine(entry, user)}</div>
-                ${detail ? `<div class="log-detail">${escapeApprovalHtml(detail)}</div>` : ""}
+                ${detail ? `<div class="log-detail">${escapeHtml(detail)}</div>` : ""}
               </div>`;
           }).join("")
         : '<div class="queue-empty">Nothing recorded for this account yet.</div>';
@@ -1686,10 +1663,10 @@ async function mountUserDirectory(container, onChanged) {
     box.className = "dir-edit-form";
     box.innerHTML = `
       <label>Full name</label>
-      <input type="text" class="edit-name" value="${escapeApprovalHtml(user.full_name || "")}"
+      <input type="text" class="edit-name" value="${escapeHtml(user.full_name || "")}"
              placeholder="LAST NAME, FIRST NAME M.I." autocomplete="off">
       <label>Account numbers</label>
-      <input type="text" class="edit-accts" value="${escapeApprovalHtml(user.account_number || "")}"
+      <input type="text" class="edit-accts" value="${escapeHtml(user.account_number || "")}"
              placeholder="####-####-##, ####-####-##" autocomplete="off">
       <div class="dir-actions">
         <button type="button" class="dir-edit" data-act="save">Save changes</button>
@@ -1894,9 +1871,9 @@ async function initEditAccountApproval(opts) {
       html += `
         <div class="pending-banner">
           <strong>Waiting for review</strong>
-          Requested ${escapeApprovalHtml(formatApprovalStamp(pending.requested_at))}:
-          ${escapeApprovalHtml(pending.requested_full_name)} &middot;
-          ${escapeApprovalHtml(pending.requested_account_number || "no account number")}.
+          Requested ${escapeHtml(formatApprovalStamp(pending.requested_at))}:
+          ${escapeHtml(pending.requested_full_name)} &middot;
+          ${escapeHtml(pending.requested_account_number || "no account number")}.
           Your details stay as they are until it's approved.
           <button type="button" class="withdraw" id="withdrawChangeBtn">Withdraw</button>
         </div>`;
@@ -2143,13 +2120,13 @@ async function mountActionLog(container) {
             const detail = logEntryDetail(entry);
             return `
               <div class="log-row">
-                <div class="log-when">${escapeApprovalHtml(formatApprovalStamp(entry.at))}</div>
+                <div class="log-when">${escapeHtml(formatApprovalStamp(entry.at))}</div>
                 <div class="log-what">
-                  <strong>${escapeApprovalHtml(entry.actor_email || "system")}</strong>
-                  <span class="log-act">${escapeApprovalHtml(words)}</span>
-                  ${escapeApprovalHtml(subject)}
+                  <strong>${escapeHtml(entry.actor_email || "system")}</strong>
+                  <span class="log-act">${escapeHtml(words)}</span>
+                  ${escapeHtml(subject)}
                 </div>
-                ${detail ? `<div class="log-detail">${escapeApprovalHtml(detail)}</div>` : ""}
+                ${detail ? `<div class="log-detail">${escapeHtml(detail)}</div>` : ""}
               </div>`;
           }).join("")
         : `<div class="queue-empty">${
