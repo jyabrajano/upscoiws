@@ -66,25 +66,6 @@ function todayLocalISO() {
 // false for them (see deploy-schema.sql), so they fall through
 // to the profile read below and are refused like anyone else.
 // ------------------------------------------------------------
-// A rejected token and a flaky network both arrive here as "the query
-// failed", and they need opposite responses. A network problem should
-// leave the session alone and invite a retry. A rejected token cannot
-// be retried into working — the only way out is to sign in again — and
-// treating it as transient is what produces a page that sits on
-// "Checking your access…" forever with a Retry button that can never
-// succeed.
-//
-// PostgREST reports an expired or invalid JWT as PGRST301 or a bare
-// 401. The message check is a backstop for the shapes that carry
-// neither, which do occur across gateway versions.
-function isAuthError(error) {
-  if (!error) return false;
-  if (error.code === "PGRST301" || error.code === "401") return true;
-  if (error.status === 401 || error.status === 403) return true;
-  return /jwt|token|unauthor|not authenticated|session.*expired/i
-    .test(String(error.message || ""));
-}
-
 async function getApprovalState(email) {
   try {
     const { data: isAdmin } = await supabaseClient.rpc("is_admin");
@@ -109,13 +90,6 @@ async function getApprovalState(email) {
         "Run deploy-schema.sql in Supabase → SQL Editor."
       );
       return { status: "setup", isAdmin: false, reason: null };
-    }
-    // The session in storage is no longer accepted by the server. This
-    // is a dead end, not a delay, and it has to be said so — see
-    // isAuthError() above.
-    if (isAuthError(error)) {
-      console.warn("Session rejected by the server; signing out.");
-      return { status: "expired", isAdmin: false, reason: null };
     }
     console.error("Couldn't read your approval status:", error);
     // Still fails closed — "unavailable" is not "approved", and
@@ -151,17 +125,6 @@ async function requireSession() {
   }
 
   const state = await getApprovalState(session.user.email);
-
-  // A session the server no longer accepts. Clear it locally and send
-  // the person somewhere they can act, rather than leaving them on a
-  // half-drawn page waiting for an approval check that will never
-  // succeed. Local scope so this doesn't cascade into their other
-  // devices — see idleSignOut().
-  if (state.status === "expired") {
-    try { await supabaseClient.auth.signOut({ scope: "local" }); } catch (_) {}
-    window.location.replace("index.html?access=expired");
-    return null;
-  }
 
   // A status we couldn't read is not a status we can act on. Block the
   // page — returning null stops every caller the same way a refusal
@@ -253,61 +216,6 @@ function showConnectionNotice() {
   else document.addEventListener("DOMContentLoaded", build);
 }
 
-// ============================================================
-// Build stamp
-//
-// Every file that matters declares its own version into window.__BUILD,
-// and this draws them in the corner of the page. It exists because
-// "the feature I just deployed isn't there" has been indistinguishable
-// from "the file didn't upload" or "the browser is serving a cached
-// copy", and telling those apart has cost several rounds of guessing.
-//
-// Per FILE, not per build, on purpose. A single global version can
-// only say "something is stale". This says WHICH: if the corner reads
-//
-//     build 2026-08-07-h · approval 2026-08-07-c
-//
-// then approval.js is three revisions behind and there is nothing to
-// debug in the feature itself.
-//
-// Delete the stamp by removing the call at the bottom of this block.
-// The constants are harmless on their own.
-// ============================================================
-const BUILD_ID = "2026-08-07-i";
-window.__BUILD = window.__BUILD || {};
-window.__BUILD.config = BUILD_ID;
-
-function renderBuildStamp() {
-  const parts = window.__BUILD || {};
-  const names = Object.keys(parts).sort();
-
-  // Anything not matching config.js is the thing to re-upload.
-  const stale = names.filter(n => parts[n] !== BUILD_ID);
-
-  const el = document.createElement("div");
-  el.id = "buildStamp";
-  el.style.cssText =
-    "position:fixed;left:8px;bottom:6px;z-index:9990;pointer-events:none;" +
-    "font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;" +
-    "padding:3px 7px;border-radius:6px;" +
-    (stale.length
-      ? "background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;"
-      : "background:rgba(255,255,255,.72);color:#94a3b8;border:1px solid rgba(148,163,184,.3);");
-
-  el.textContent = stale.length
-    ? "STALE: " + stale.map(n => `${n}=${parts[n]}`).join(" ") + ` (want ${BUILD_ID})`
-    : names.map(n => n[0]).join("") + " " + BUILD_ID;
-
-  el.title = names.map(n => `${n}: ${parts[n]}`).join("\n");
-  document.body.appendChild(el);
-
-  console.info("[build]", parts, stale.length ? "STALE: " + stale.join(", ") : "all current");
-}
-
-// load, not DOMContentLoaded: every page script has to have run and
-// registered its version before this can report on them.
-window.addEventListener("load", renderBuildStamp);
-
 async function logout() {
   await supabaseClient.auth.signOut();
   window.location.href = "index.html";
@@ -348,7 +256,11 @@ async function logout() {
 // ============================================================
 const IDLE_LIMIT_MS  = 5 * 60 * 1000;  // total inactivity allowed
 const IDLE_WARN_MS   = 60 * 1000;      // of which the last minute warns
-const IDLE_POLL_MS   = 5000;           // how often elapsed time is checked
+// 1s, not 5s. The dialog promises a per-second countdown, and at a 5s
+// poll it read 60, then 55, then 50 — which looks like a stuck or
+// broken timer at exactly the moment the person is deciding whether to
+// trust it. A comparison of two numbers once a second costs nothing.
+const IDLE_POLL_MS   = 1000;           // how often elapsed time is checked
 const IDLE_WRITE_MS  = 2000;           // throttle on localStorage writes
 const IDLE_KEY       = "scoiws:last-activity";
 
@@ -450,20 +362,51 @@ async function idleSignOut() {
   idleWatching = false;
   idleDismissWarning();
   try { localStorage.removeItem(IDLE_KEY); } catch (_) {}
-  // scope: "local" — this browser only.
-  //
-  // signOut() defaults to global, which revokes the refresh token for
-  // every session the person has anywhere: other tabs, their phone, a
-  // machine at another desk. An unattended terminal timing out is not
-  // a reason to sign someone out of their own phone, and the tabs it
-  // hits do not fail cleanly — they still hold a session object that
-  // looks valid, so they wedge on the next request rather than
-  // returning to the sign-in page.
-  try { await supabaseClient.auth.signOut({ scope: "local" }); } catch (_) {}
+  try { await supabaseClient.auth.signOut(); } catch (_) {}
   // replace(), not href: the page behind this still holds someone's
   // name and account numbers, and the back button should not walk
   // back onto it.
   window.location.replace("index.html?timeout=1");
+}
+
+// Activity from a real interaction, as opposed to one the warning
+// dialog caused by existing.
+//
+// The warning is a full-viewport overlay, so once it is up every
+// pointer event lands on it. Counting those would mean the dialog
+// keeps the session alive simply by being on screen — and worse,
+// idleShowWarning() ends with stay.focus(), which fires a focus event
+// that this very listener hears. The listener is bound to window with
+// capture:true because that is the only way to catch focus (it does
+// not bubble), so the dialog was resetting the clock the instant it
+// appeared. The next poll then saw a fresh clock and dismissed it.
+// The result was a box that flashed for five seconds every four
+// minutes and a timeout that never once fired.
+//
+// The button's own click calls idleMarkActivity() directly, so
+// "Stay signed in" still works. Nothing else in the dialog counts.
+function idleActivityFromEvent(e) {
+  const target = e && e.target;
+  if (idleWarningEl && target instanceof Node && idleWarningEl.contains(target)) return;
+  idleMarkActivity(false);
+}
+
+// Pulled out of setInterval so visibilitychange can run the same
+// check. Returning to a tab needs to be a moment of reckoning, not
+// an amnesty.
+function idleCheck() {
+  if (!idleWatching) return;
+
+  const idleFor = Date.now() - idleReadLastActivity();
+
+  if (idleFor >= IDLE_LIMIT_MS) {
+    idleSignOut();
+    return;
+  }
+
+  const msLeft = IDLE_LIMIT_MS - idleFor;
+  if (msLeft <= IDLE_WARN_MS) idleShowWarning(Math.ceil(msLeft / 1000));
+  else idleDismissWarning();  // activity elsewhere reset the clock
 }
 
 function startIdleWatch() {
@@ -471,31 +414,28 @@ function startIdleWatch() {
   idleWatching = true;
   idleMarkActivity(true);
 
-  // pointerdown covers mouse, pen and touch in one. scroll and
-  // keydown catch reading and typing; visibilitychange catches
-  // returning to the tab, which is a real signal of presence.
+  // pointerdown covers mouse, pen and touch in one. scroll and keydown
+  // catch reading and typing. focus needs capture:true — it does not
+  // bubble — which is what makes idleActivityFromEvent()'s guard
+  // necessary rather than merely tidy.
   ["pointerdown", "pointermove", "keydown", "scroll", "wheel", "focus"]
-    .forEach(evt => window.addEventListener(evt, () => idleMarkActivity(false),
+    .forEach(evt => window.addEventListener(evt, idleActivityFromEvent,
                                             { passive: true, capture: true }));
 
+  // Check on return, do NOT mark activity.
+  //
+  // This used to call idleMarkActivity(true), on the reasoning that
+  // coming back to the tab proves someone is there. It does — but it
+  // also forgave however long they had been away, and browsers freeze
+  // timers in background tabs, so the poll below could not have caught
+  // it in the meantime. Leave the portal minimised over lunch, come
+  // back, and the clock started over. That is the exact scenario this
+  // whole feature exists for.
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) idleMarkActivity(true);
+    if (!document.hidden) idleCheck();
   });
 
-  setInterval(() => {
-    if (!idleWatching) return;
-
-    const idleFor = Date.now() - idleReadLastActivity();
-
-    if (idleFor >= IDLE_LIMIT_MS) {
-      idleSignOut();
-      return;
-    }
-
-    const msLeft = IDLE_LIMIT_MS - idleFor;
-    if (msLeft <= IDLE_WARN_MS) idleShowWarning(Math.ceil(msLeft / 1000));
-    else idleDismissWarning();  // activity elsewhere reset the clock
-  }, IDLE_POLL_MS);
+  setInterval(idleCheck, IDLE_POLL_MS);
 }
 
 // ============================================================

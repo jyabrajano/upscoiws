@@ -1,9 +1,3 @@
-// Version marker for the build stamp in config.js. Bump with the
-// BUILD_ID there whenever this file changes, so a stale copy on the
-// server announces itself instead of looking like a broken feature.
-window.__BUILD = window.__BUILD || {};
-window.__BUILD["index"] = "2026-08-07-i";
-
 const form = document.getElementById("authForm");
 const statusEl = document.getElementById("status");
 const submitBtn = document.getElementById("submitBtn");
@@ -56,14 +50,6 @@ function showAccessMessage(state, reason) {
         ? `This account has been switched off by the Cash Office: ${reason}`
         : "This account has been switched off by the Cash Office. Contact them if you need it back.",
       "error"
-    );
-  } else if (state === "expired") {
-    showStatusRich(
-      "Session ended",
-      "You were signed out because your session is no longer valid — usually " +
-      "because it expired, or you signed out in another window. Sign in again " +
-      "to carry on.",
-      "notice"
     );
   } else if (state === "setup") {
     showStatusRich(
