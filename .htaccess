@@ -52,35 +52,6 @@
   <FilesMatch "\.(html)$">
     Header always set Cache-Control "no-store, must-revalidate"
   </FilesMatch>
-
-  # The .js files carry all the behaviour, and this rule used to cover
-  # .html only. That combination is worse than having neither: the
-  # markup updates the instant it is uploaded because it is no-store,
-  # while the scripts it depends on are served from cache with nothing
-  # but a heuristic deciding for how long. A deploy therefore lands as
-  # NEW MARKUP DRIVEN BY OLD CODE — new elements nothing wires up, new
-  # functions the pages call and cannot find — and the symptoms look
-  # like bugs in the feature that was just shipped rather than like a
-  # stale file. It reproduces for whoever has visited before and not
-  # for anyone testing in a fresh browser, which is the worst possible
-  # signature to debug.
-  #
-  # no-cache rather than no-store, deliberately: no-cache still lets
-  # the browser keep a copy, it just has to revalidate before using it.
-  # Unchanged files come back 304 Not Modified with no body, so this
-  # costs one small conditional request per file per load and never a
-  # re-download. no-store would forbid keeping the copy at all and
-  # re-download roughly 200KB of unchanged script on every page view.
-  <FilesMatch "\.(js)$">
-    Header always set Cache-Control "no-cache, must-revalidate"
-  </FilesMatch>
-
-  # Static assets are exempt on purpose. UPSeal.png does not change
-  # when the code does, and there is no version of this problem that
-  # it causes.
-  <FilesMatch "\.(png|jpg|jpeg|gif|svg|webp|ico|woff2?)$">
-    Header always set Cache-Control "public, max-age=604800"
-  </FilesMatch>
 </IfModule>
 
 # ---- correct types ----
