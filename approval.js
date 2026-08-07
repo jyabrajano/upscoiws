@@ -1,3 +1,9 @@
+// Version marker for the build stamp in config.js. Bump with the
+// BUILD_ID there whenever this file changes, so a stale copy on the
+// server announces itself instead of looking like a broken feature.
+window.__BUILD = window.__BUILD || {};
+window.__BUILD["approval"] = "2026-08-07-h";
+
 // ============================================================
 // Approval workflow — shared by dashboard.html and soa.html
 //
@@ -291,6 +297,68 @@ function injectApprovalStyles() {
   }
   .queue-result.ok   { background: var(--yellow-soft, #fef9ec); color: #854d0e; border: 1px solid #fde68a; }
   .queue-result.bad  { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+
+  /* --- queue filter --- */
+  /* Same shape as .dir-search so the two search boxes in the admin
+     areas don't look like different features. */
+  .queue-filter {
+    display: flex; align-items: center; gap: 9px;
+    margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .queue-filter[hidden] { display: none; }
+  /* The field wraps the input so the suggestion list can be positioned
+     against it rather than against the card, which would put the
+     dropdown in the wrong place the moment the row wraps on mobile. */
+  .queue-filter-field { position: relative; flex: 1 1 240px; min-width: 0; }
+  .queue-filter input {
+    width: 100%; box-sizing: border-box; padding: 10px 12px;
+    border: 1.5px solid #e2e8f0; border-radius: 9px;
+    font: 400 13.5px/1.3 "Inter", sans-serif; background: #fff;
+    color: var(--ink, #1e293b);
+  }
+  .queue-filter input:focus {
+    outline: none; border-color: var(--maroon, #7b1113);
+    box-shadow: 0 0 0 3px rgba(123, 17, 19, 0.08);
+  }
+  .queue-filter button {
+    padding: 9px 16px; border: none; border-radius: 8px;
+    background: var(--maroon, #7b1113); color: #fff;
+    font: 700 12.5px/1 "Inter", sans-serif; cursor: pointer;
+  }
+  .queue-filter button:hover:not(:disabled) { background: var(--maroon-dark, #5c0d0f); }
+  .queue-filter button:disabled { opacity: .55; cursor: not-allowed; }
+  .queue-filter-note {
+    font: 400 12.5px/1.3 "Inter", sans-serif;
+    color: var(--muted, #64748b);
+  }
+
+  /* --- suggestion dropdown --- */
+  .queue-suggest {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    z-index: 40; margin: 0; padding: 4px; list-style: none;
+    max-height: 264px; overflow-y: auto;
+    background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+  }
+  .queue-suggest[hidden] { display: none; }
+  .queue-suggest li {
+    padding: 8px 10px; border-radius: 7px; cursor: pointer;
+    font: 400 13px/1.35 "Inter", sans-serif; color: var(--ink, #1e293b);
+  }
+  .queue-suggest li:hover,
+  .queue-suggest li[aria-selected="true"] { background: var(--yellow-soft, #fef9ec); }
+  .queue-suggest li[aria-selected="true"] { box-shadow: inset 0 0 0 1.5px var(--maroon, #7b1113); }
+  .queue-suggest .s-name { font-weight: 700; display: block; }
+  .queue-suggest .s-meta {
+    display: block; margin-top: 1px;
+    font-size: 11.5px; color: var(--muted, #64748b);
+  }
+  /* mark is the browser default yellow otherwise, which fights the
+     maroon everywhere else on the page. */
+  .queue-suggest mark {
+    background: rgba(123, 17, 19, 0.13); color: inherit;
+    border-radius: 3px; padding: 0 1px;
+  }
 
   /* --- dashboard admin cards --- */
   /* display:contents lets the three cards sit directly in the
@@ -706,7 +774,29 @@ async function decideAdminRemoval(requestId, approve, note) {
 async function mountAdminQueues(opts) {
   injectApprovalStyles();
 
-  const { registrationsEl, changesEl, onApplied } = opts;
+  const { registrationsEl, changesEl, onApplied, filterEl } = opts;
+
+  // Optional. Pages that don't pass one simply get an unfiltered
+  // queue, which is what users.html and anything else mounting these
+  // panels does today.
+  const filterInput = filterEl ? filterEl.querySelector('[data-role="query"]') : null;
+  const filterClear = filterEl ? filterEl.querySelector('[data-act="clear"]') : null;
+  const filterNote  = filterEl ? filterEl.querySelector('[data-role="note"]') : null;
+  const suggestEl   = filterEl ? filterEl.querySelector('[data-role="suggest"]') : null;
+
+  // Temporary, and safe to delete once the filter is confirmed working.
+  // It exists because "the filter doesn't appear" has three completely
+  // different causes that look identical from the outside: the markup
+  // is missing (old dashboard.html), the option was never passed (old
+  // page-dashboard.js), or the wiring ran fine and the queue is simply
+  // empty. This says which, in one line, without anyone having to
+  // reason about it.
+  console.info(
+    "[approval.js] registration filter —",
+    filterEl ? "container found" : "NO container (old dashboard.html, or filterEl not passed)",
+    "| input:", !!filterInput,
+    "| suggestions:", !!suggestEl
+  );
 
   if (registrationsEl) registrationsEl.innerHTML = '<div class="queue-empty">Loading…</div>';
   if (changesEl) changesEl.innerHTML = '<div class="queue-empty">Loading…</div>';
@@ -728,6 +818,195 @@ async function mountAdminQueues(opts) {
     badge.style.display = n > 0 ? "inline-block" : "none";
   }
 
+  // The queue as last loaded, unfiltered. The filter narrows this
+  // rather than refetching: admin_pending_queue() already returns
+  // everything pending in one call, so there is nothing further to ask
+  // for and a round trip per keystroke would buy nothing.
+  let allRegs = [];
+
+  // Digits-only comparison for account numbers, so a query matches
+  // however either side is punctuated: "3072100742", "3072-1007-42"
+  // and a half-typed "3072-1007" all find the same row. The same trick
+  // admin_action_log() uses in SQL, for the same reason.
+  function registrationMatches(r, query) {
+    if (!query) return true;
+
+    const text = [r.full_name, r.email].filter(Boolean).join(" ").toLowerCase();
+    if (text.includes(query)) return true;
+
+    const queryDigits = query.replace(/\D/g, "");
+    if (!queryDigits) return false;
+
+    const acctDigits = String(r.account_number == null ? "" : r.account_number).replace(/\D/g, "");
+    return acctDigits.includes(queryDigits);
+  }
+
+  function registrationCard(r) {
+    return `
+      <div class="req-card" data-kind="registration" data-email="${escapeApprovalHtml(r.email)}">
+        <div class="req-who">${escapeApprovalHtml(r.full_name || "(no name given)")}</div>
+        <div class="req-meta">${escapeApprovalHtml(r.email)} · applied ${escapeApprovalHtml(formatApprovalStamp(r.submitted_at))}</div>
+        <div class="req-diff">
+          <div><span class="k">Account no.</span><span class="v">${escapeApprovalHtml(r.account_number || "— not provided —")}</span></div>
+        </div>
+        <div class="req-actions">
+          <button type="button" class="btn-approve" data-act="approve">Approve access</button>
+          <button type="button" class="btn-reject" data-act="reject">Reject</button>
+        </div>
+      </div>`;
+  }
+
+  // ---- suggestions ----
+  //
+  // Drawn from allRegs, the same array the filter narrows, so the
+  // dropdown can only ever offer people who are actually waiting. A
+  // suggestion list built from anywhere wider would let an
+  // administrator pick a name and land on an empty queue.
+
+  const SUGGEST_LIMIT = 8;
+  let suggestions = [];
+  let activeSuggestion = -1;
+
+  // Escapes first, then wraps the match, so the <mark> is the only
+  // markup that survives. Slicing the raw string and escaping each
+  // piece separately is what keeps that true — building the string
+  // first and escaping after would escape the <mark> too, and
+  // escaping first then searching would miss matches inside anything
+  // that got entity-encoded.
+  function highlight(text, query) {
+    const s = String(text == null ? "" : text);
+    if (!query) return escapeApprovalHtml(s);
+    const at = s.toLowerCase().indexOf(query);
+    if (at === -1) return escapeApprovalHtml(s);
+    return escapeApprovalHtml(s.slice(0, at)) +
+           "<mark>" + escapeApprovalHtml(s.slice(at, at + query.length)) + "</mark>" +
+           escapeApprovalHtml(s.slice(at + query.length));
+  }
+
+  // What typing a suggestion puts in the box. full_name is unique in
+  // the database (enforce_profile_uniqueness) and so is email, so
+  // either narrows to exactly one card.
+  function suggestionValue(r) {
+    return r.full_name || r.email || "";
+  }
+
+  function closeSuggestions() {
+    suggestions = [];
+    activeSuggestion = -1;
+    if (!suggestEl) return;
+    suggestEl.hidden = true;
+    suggestEl.innerHTML = "";
+    if (filterInput) filterInput.setAttribute("aria-expanded", "false");
+  }
+
+  function paintSuggestions() {
+    if (!suggestEl) return;
+
+    suggestEl.innerHTML = suggestions.map((r, i) => {
+      const query = (filterInput.value || "").trim().toLowerCase();
+      const meta = [r.email, r.account_number || "no account number"]
+        .filter(Boolean).join(" · ");
+      return `
+        <li role="option" id="regSuggest-${i}" data-i="${i}"
+            aria-selected="${i === activeSuggestion}">
+          <span class="s-name">${highlight(r.full_name || "(no name given)", query)}</span>
+          <span class="s-meta">${highlight(meta, query)}</span>
+        </li>`;
+    }).join("");
+
+    suggestEl.hidden = suggestions.length === 0;
+    filterInput.setAttribute("aria-expanded", String(suggestions.length > 0));
+    filterInput.setAttribute(
+      "aria-activedescendant",
+      activeSuggestion >= 0 ? `regSuggest-${activeSuggestion}` : ""
+    );
+
+    suggestEl.querySelectorAll("li").forEach((li) => {
+      // mousedown, not click: the input loses focus before a click
+      // completes, and the blur handler closes the list out from
+      // under the pointer.
+      li.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        chooseSuggestion(Number(li.getAttribute("data-i")));
+      });
+    });
+  }
+
+  function openSuggestions() {
+    if (!suggestEl || !filterInput) return;
+
+    const query = filterInput.value.trim().toLowerCase();
+    // Nothing typed means nothing to suggest. Listing the whole queue
+    // on focus would just cover the queue with a copy of itself.
+    if (!query) return closeSuggestions();
+
+    const matches = allRegs.filter(r => registrationMatches(r, query));
+
+    // One exact hit is not a suggestion, it is the answer — the list
+    // would be a box saying "did you mean the thing you are looking
+    // straight at".
+    if (matches.length === 1 &&
+        suggestionValue(matches[0]).toLowerCase() === query) {
+      return closeSuggestions();
+    }
+
+    suggestions = matches.slice(0, SUGGEST_LIMIT);
+    activeSuggestion = -1;
+    paintSuggestions();
+  }
+
+  function moveSuggestion(step) {
+    if (!suggestions.length) return;
+    activeSuggestion = (activeSuggestion + step + suggestions.length) % suggestions.length;
+    paintSuggestions();
+    const active = suggestEl.querySelector('[aria-selected="true"]');
+    if (active && active.scrollIntoView) active.scrollIntoView({ block: "nearest" });
+  }
+
+  function chooseSuggestion(i) {
+    const picked = suggestions[i];
+    if (!picked) return;
+    filterInput.value = suggestionValue(picked);
+    closeSuggestions();
+    paintRegistrations();
+    filterInput.focus();
+  }
+
+  // Repaints the registrations list against the current filter text.
+  // Called on every keystroke and after every reload.
+  function paintRegistrations() {
+    if (!registrationsEl) return;
+
+    const query = (filterInput ? filterInput.value : "").trim().toLowerCase();
+    const shown = query ? allRegs.filter(r => registrationMatches(r, query)) : allRegs;
+
+    registrationsEl.innerHTML = shown.length
+      ? shown.map(registrationCard).join("")
+      : `<div class="queue-empty">${
+           allRegs.length === 0
+             ? "No one is waiting for access."
+             : "No registrations match that."
+         }</div>`;
+
+    // The badge keeps counting everything pending, not what survived
+    // the filter. It answers "how much is waiting", and a filter is not
+    // supposed to make work disappear from that answer -- a queue that
+    // reads 0 because of a stale search box is how something waits a
+    // week. The note beside the box carries the filtered number.
+    setCount(registrationsEl, allRegs.length);
+
+    if (filterEl) {
+      if (filterNote) {
+        filterNote.textContent = query
+          ? `Showing ${shown.length} of ${allRegs.length}`
+          : "";
+      }
+      if (filterClear) filterClear.disabled = !query;
+    }
+
+    wire(registrationsEl);
+  }
+
   async function render() {
     let queue;
     try {
@@ -744,22 +1023,17 @@ async function mountAdminQueues(opts) {
     const changes = queue.profileChanges;
 
     if (registrationsEl) {
-      registrationsEl.innerHTML = regs.length
-        ? regs.map(r => `
-            <div class="req-card" data-kind="registration" data-email="${escapeApprovalHtml(r.email)}">
-              <div class="req-who">${escapeApprovalHtml(r.full_name || "(no name given)")}</div>
-              <div class="req-meta">${escapeApprovalHtml(r.email)} · applied ${escapeApprovalHtml(formatApprovalStamp(r.submitted_at))}</div>
-              <div class="req-diff">
-                <div><span class="k">Account no.</span><span class="v">${escapeApprovalHtml(r.account_number || "— not provided —")}</span></div>
-              </div>
-              <div class="req-actions">
-                <button type="button" class="btn-approve" data-act="approve">Approve access</button>
-                <button type="button" class="btn-reject" data-act="reject">Reject</button>
-              </div>
-            </div>`).join("")
-        : '<div class="queue-empty">No one is waiting for access.</div>';
-      setCount(registrationsEl, regs.length);
-      wire(registrationsEl);
+      allRegs = regs;
+      // Deliberately keeps whatever is in the filter box. An approval
+      // reloads the queue, and having the box clear itself underneath
+      // an administrator part-way through a batch would drop them back
+      // into the full list between every decision.
+      //
+      // The dropdown does close, though: the row it was offering may
+      // have just been approved out of existence, and a stale list of
+      // people who are no longer waiting is worse than no list.
+      closeSuggestions();
+      paintRegistrations();
     }
 
     if (changesEl) {
@@ -868,6 +1142,71 @@ async function mountAdminQueues(opts) {
           }
         });
       });
+    });
+  }
+
+  // Live filtering, not a search button. The rows are already in
+  // memory, so there is nothing to wait for and nothing to submit —
+  // making someone press Enter to narrow a list they can already see
+  // would be latency invented on purpose. The suggestion list rides
+  // alongside it: typing always filters, and picking a suggestion is
+  // a shortcut to the exact row rather than a required step.
+  if (filterInput) {
+    filterInput.addEventListener("input", () => {
+      paintRegistrations();
+      openSuggestions();
+    });
+
+    filterInput.addEventListener("keydown", (e) => {
+      const open = suggestions.length > 0;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (open) moveSuggestion(1);
+        else openSuggestions();
+        return;
+      }
+      if (e.key === "ArrowUp" && open) {
+        e.preventDefault();
+        moveSuggestion(-1);
+        return;
+      }
+      if (e.key === "Enter") {
+        // Only swallow Enter when a suggestion is actually highlighted.
+        // Otherwise it should do what it always did — nothing — rather
+        // than silently eating a keystroke.
+        if (open && activeSuggestion >= 0) {
+          e.preventDefault();
+          chooseSuggestion(activeSuggestion);
+        } else {
+          closeSuggestions();
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        // First Escape dismisses the dropdown, second clears the box.
+        // Collapsing both into one step means an administrator who
+        // just wanted the list out of the way loses their filter too.
+        if (open) { closeSuggestions(); return; }
+        if (filterInput.value) {
+          filterInput.value = "";
+          paintRegistrations();
+        }
+        return;
+      }
+      if (e.key === "Tab") closeSuggestions();
+    });
+
+    filterInput.addEventListener("focus", openSuggestions);
+    filterInput.addEventListener("blur", closeSuggestions);
+  }
+
+  if (filterClear) {
+    filterClear.addEventListener("click", () => {
+      filterInput.value = "";
+      closeSuggestions();
+      paintRegistrations();
+      filterInput.focus();
     });
   }
 

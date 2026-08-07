@@ -1,3 +1,9 @@
+// Version marker for the build stamp in config.js. Bump with the
+// BUILD_ID there whenever this file changes, so a stale copy on the
+// server announces itself instead of looking like a broken feature.
+window.__BUILD = window.__BUILD || {};
+window.__BUILD["index"] = "2026-08-07-h";
+
 const form = document.getElementById("authForm");
 const statusEl = document.getElementById("status");
 const submitBtn = document.getElementById("submitBtn");
@@ -431,6 +437,21 @@ form.addEventListener("submit", async (e) => {
   // Sent back here after a successful password change.
   if (params.get("reset") === "done") {
     showStatusRich("Password updated", "Sign in with your new password.", "success");
+    history.replaceState(null, "", window.location.pathname);
+    return;
+  }
+
+  // Sent back here by the idle timeout in config.js. Worth saying
+  // plainly: an unexplained return to the sign-in page reads as the
+  // portal having dropped the session on its own, and the natural
+  // response to that is to stop trusting it.
+  if (params.get("timeout") === "1") {
+    showStatusRich(
+      "Signed out",
+      "You were signed out after five minutes of inactivity, so your " +
+      "account details aren't left on screen. Sign in again to carry on.",
+      "notice"
+    );
     history.replaceState(null, "", window.location.pathname);
     return;
   }

@@ -32,19 +32,11 @@
   and what applies is the intersection, so the older of the two wins
   every disagreement.
 
-  script-src names two CDN origins. This is the ROLLBACK build: both
-  libraries load from the CDN at a pinned version, so no vendor/ folder
-  is needed and the site works on upload alone.
-
-  This is a stopgap, not the target. Naming an origin in script-src
-  trusts every script on it, not the two wanted. The self-hosted build
-  (script-src 'self' alone, libraries under vendor/) is the one to get
-  back to once `node sync-vendor.js` has been run successfully -- see
-  sync-vendor.js in the full project archive.
-
-  What this build does keep is the version pin. The original tag was
-  @2, a floating major: whatever the CDN served at page-load time ran
-  with full privileges. @2.112.1 does not move on its own.
+  script-src is now 'self' alone. It used to name cdn.jsdelivr.net,
+  which trusted every script on a public CDN in order to load two of
+  them. Both libraries are self-hosted under vendor/ instead -- run
+  `node sync-vendor.js` once before the first deploy, or every page
+  will fail to start.
 
   script-src no longer carries 'unsafe-inline'. That is the whole
   point of the page-*.js files: every page used to end in a several
@@ -69,7 +61,7 @@
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com;
+  script-src 'self';
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data:;
@@ -82,9 +74,9 @@
 <link rel="icon" type="image/png" href="UPSeal.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.1"></script>
-<script src="config.js"></script>
-<script src="approval.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="config.js?v=2026-08-07-h"></script>
+<script src="approval.js?v=2026-08-07-h"></script>
 <style>
   :root {
     --maroon: #7b1113;
@@ -288,6 +280,21 @@
     font-size: 13.5px;
     font-style: italic;
   }
+
+  /* Every card on this page spans the full wrapper.
+
+     .wrap is a `2fr 1fr` grid above 800px, inherited from the
+     dashboard where a narrow second column earns its place. Nothing
+     here is a sidebar: the queues, the user search and the action log
+     are all wide tables and lists. Left as-is, the first card would
+     take the 2fr column and stop at about two thirds of the wrapper
+     while the ones below it ran full width, which reads as a
+     misaligned page rather than a deliberate layout.
+
+     approval.js already sets this for .admin-card. Stating it for
+     every card keeps the two queues and Manage Users the same width
+     without depending on which classes happen to be on which. */
+  .wrap > .card { grid-column: 1 / -1; }
 
   /* --- UPDATED TABLE STYLE MATCHING SOA.HTML --- */
   .available-card {
@@ -522,6 +529,67 @@
   </nav>
 
   <div class="wrap" id="pageWrap" style="display:none;">
+    <!--
+      The two approval queues, moved here from dashboard.html. They sit
+      above Manage Users because that is the order the work happens in:
+      approve who is waiting, then go looking for someone specific.
+
+      No wrapper div around them on purpose. They need to be direct
+      children of .wrap to be grid items in their own right; nesting
+      them would make the pair a single cell and break the width match
+      with Manage Users below. There is nothing to gate them with
+      either -- this whole page redirects anyone who is not an
+      administrator before it renders.
+    -->
+      <div class="card admin-card">
+        <h2 class="section-title">
+          Account Registrations
+          <span class="queue-count" id="regCount">0</span>
+        </h2>
+        <!--
+          Filters the pending list that is already on screen. The whole
+          queue arrives in one admin_pending_queue() call, so this is a
+          browser-side narrowing of rows already in memory — no round
+          trip, and no way for it to disagree with what the badge counts.
+
+          The suggestion list is drawn from that same in-memory queue,
+          so it can only ever offer people who are genuinely waiting.
+          It is an accelerator, not a gate: typing filters the list
+          whether or not a suggestion is ever chosen.
+
+          This used to start hidden and be revealed by approval.js only
+          when at least one registration was waiting — the idea being
+          not to put a search box over an empty queue. That was a bad
+          trade. It meant the control was invisible exactly when an
+          administrator went looking to see whether it existed, and
+          indistinguishable from a broken deploy. A filter over an
+          empty list costs nothing; a filter that vanishes costs a
+          bug report.
+        -->
+        <div class="queue-filter" id="regFilter">
+          <div class="queue-filter-field">
+            <input type="text" data-role="query" autocomplete="off"
+                   role="combobox" aria-expanded="false" aria-autocomplete="list"
+                   aria-controls="regFilterSuggest"
+                   aria-label="Filter registrations by name, email, or account number"
+                   placeholder="Filter by name, email, or account number">
+            <ul class="queue-suggest" id="regFilterSuggest" data-role="suggest"
+                role="listbox" aria-label="Matching registrations" hidden></ul>
+          </div>
+          <button type="button" data-act="clear">Clear</button>
+          <span class="queue-filter-note" data-role="note" role="status"></span>
+        </div>
+        <div id="regQueue"></div>
+      </div>
+
+      <div class="card admin-card">
+        <h2 class="section-title">
+          Name &amp; Account Number Changes
+          <span class="queue-count" id="changeCount">0</span>
+        </h2>
+        <div id="changeQueue"></div>
+      </div>
+
     <div class="card">
       <h2 class="section-title">Manage Users</h2>
       <p class="page-intro">
@@ -550,6 +618,6 @@
 
   <div class="gate-note" id="gateNote">Checking your access…</div>
 
-  <script src="page-users.js"></script>
+  <script src="page-users.js?v=2026-08-07-h"></script>
 </body>
 </html>

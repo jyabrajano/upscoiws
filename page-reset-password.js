@@ -1,3 +1,9 @@
+// Version marker for the build stamp in config.js. Bump with the
+// BUILD_ID there whenever this file changes, so a stale copy on the
+// server announces itself instead of looking like a broken feature.
+window.__BUILD = window.__BUILD || {};
+window.__BUILD["reset-password"] = "2026-08-07-h";
+
 const statusEl   = document.getElementById("status");
 const checkingEl = document.getElementById("checking");
 const formEl     = document.getElementById("resetForm");

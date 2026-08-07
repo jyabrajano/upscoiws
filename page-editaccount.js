@@ -1,3 +1,9 @@
+// Version marker for the build stamp in config.js. Bump with the
+// BUILD_ID there whenever this file changes, so a stale copy on the
+// server announces itself instead of looking like a broken feature.
+window.__BUILD = window.__BUILD || {};
+window.__BUILD["editaccount"] = "2026-08-07-h";
+
 
 // ------------------------------------------------------------
 // Both buttons stay disabled until the form they belong to is
