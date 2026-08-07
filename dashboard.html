@@ -61,7 +61,7 @@
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self';
+  script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data:;
@@ -74,7 +74,7 @@
 <link rel="icon" type="image/png" href="UPSeal.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<script src="vendor/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.1"></script>
 <script src="config.js"></script>
 <script src="sheets-config.js"></script>
 <script src="approval.js"></script>
@@ -1060,23 +1060,15 @@
     </div>
 
     <!-- ADMIN SECTION -->
+    <!--
+      The two approval queues (Account Registrations, and Name &
+      Account Number Changes) moved to users.html, above Manage Users.
+      They are administrator work on other people's accounts, which is
+      what that page is for; the dashboard is what someone sees about
+      their own. Administrators keeps its place here because granting
+      and removing admin rights is a different job from working a queue.
+    -->
     <div id="adminSection" style="display:none;">
-      <div class="card admin-card">
-        <h2 class="section-title">
-          Account Registrations
-          <span class="queue-count" id="regCount">0</span>
-        </h2>
-        <div id="regQueue"></div>
-      </div>
-
-      <div class="card admin-card">
-        <h2 class="section-title">
-          Name &amp; Account Number Changes
-          <span class="queue-count" id="changeCount">0</span>
-        </h2>
-        <div id="changeQueue"></div>
-      </div>
-
       <div class="card admin-card">
         <h2 class="section-title">Administrators</h2>
         <div id="adminManager"></div>

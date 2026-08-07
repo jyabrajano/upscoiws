@@ -155,6 +155,11 @@ async function requireSession() {
     return null;
   }
 
+  // Only once the session is confirmed AND approved. Starting it any
+  // earlier would run a five-minute clock against someone who is about
+  // to be bounced to the sign-in page anyway.
+  startIdleWatch();
+
   return session;
 }
 
@@ -214,6 +219,182 @@ function showConnectionNotice() {
 async function logout() {
   await supabaseClient.auth.signOut();
   window.location.href = "index.html";
+}
+
+// ============================================================
+// Idle timeout
+//
+// Signs someone out after five minutes with no activity. These are
+// shared machines in a cash office: the realistic threat is not an
+// attacker, it is the next person to sit down at a terminal somebody
+// walked away from, in front of a dashboard showing a colleague's
+// name and account numbers.
+//
+// Started by requireSession() on every protected page, so there is
+// nothing to remember to add when a page is created. Pre-auth pages
+// (index, registration, reset-password) never call it and are never
+// watched — there is no session to end.
+//
+// Three things this has to get right that a bare setTimeout does not:
+//
+//   ACROSS TABS   activity in any tab counts for all of them. The
+//                 timestamp lives in localStorage, so a person reading
+//                 the statement of account in one tab is not signed
+//                 out by an idle dashboard in another.
+//
+//   AFTER SLEEP   setTimeout is throttled in background tabs and does
+//                 not run while a laptop is suspended, so a timer set
+//                 for five minutes can fire an hour late. Elapsed time
+//                 is measured against the clock instead, on a short
+//                 poll, which is correct however long the machine was
+//                 away.
+//
+//   WITH WARNING  the last minute is spent asking rather than acting.
+//                 Being dropped mid-sentence while filling in Edit
+//                 Account, with no idea why, teaches people to
+//                 distrust the portal.
+// ============================================================
+const IDLE_LIMIT_MS  = 5 * 60 * 1000;  // total inactivity allowed
+const IDLE_WARN_MS   = 60 * 1000;      // of which the last minute warns
+const IDLE_POLL_MS   = 5000;           // how often elapsed time is checked
+const IDLE_WRITE_MS  = 2000;           // throttle on localStorage writes
+const IDLE_KEY       = "scoiws:last-activity";
+
+// Fallback for private modes and anywhere localStorage throws. Loses
+// the cross-tab property and nothing else.
+let idleLastActivity = Date.now();
+let idleLastWrite = 0;
+let idleWatching = false;
+let idleWarningEl = null;
+
+function idleReadLastActivity() {
+  try {
+    const raw = localStorage.getItem(IDLE_KEY);
+    const shared = raw ? Number(raw) : 0;
+    // The larger of the two: this tab may have seen activity it has
+    // not written yet, and another tab may have written activity this
+    // one never saw.
+    return Math.max(idleLastActivity, Number.isFinite(shared) ? shared : 0);
+  } catch (_) {
+    return idleLastActivity;
+  }
+}
+
+function idleMarkActivity(force) {
+  const now = Date.now();
+  idleLastActivity = now;
+
+  // mousemove fires continuously; writing on each one would be a
+  // storage write every few milliseconds for no added accuracy.
+  if (!force && now - idleLastWrite < IDLE_WRITE_MS) return;
+  idleLastWrite = now;
+  try { localStorage.setItem(IDLE_KEY, String(now)); } catch (_) {}
+}
+
+function idleDismissWarning() {
+  if (!idleWarningEl) return;
+  idleWarningEl.remove();
+  idleWarningEl = null;
+}
+
+// Deliberately does NOT count as activity itself. Reading the warning
+// is not using the portal, and a dialog that resets the clock by
+// existing would never time anyone out.
+function idleShowWarning(secondsLeft) {
+  if (idleWarningEl) {
+    const count = idleWarningEl.querySelector("[data-idle-count]");
+    if (count) count.textContent = String(secondsLeft);
+    return;
+  }
+
+  const box = document.createElement("div");
+  box.setAttribute("role", "alertdialog");
+  box.setAttribute("aria-labelledby", "idleWarnTitle");
+  box.style.cssText =
+    "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;" +
+    "justify-content:center;background:rgba(15,23,42,0.55);padding:24px;" +
+    "font:14px/1.55 system-ui,sans-serif;color:#0f172a;";
+
+  const card = document.createElement("div");
+  card.style.cssText =
+    "max-width:380px;text-align:center;background:#fff;border-radius:12px;" +
+    "padding:28px 26px;box-shadow:0 12px 40px rgba(15,23,42,0.25);";
+
+  const h = document.createElement("h2");
+  h.id = "idleWarnTitle";
+  h.textContent = "Still there?";
+  h.style.cssText = "margin:0 0 10px;font-size:17px;font-weight:700;";
+
+  const p = document.createElement("p");
+  p.style.cssText = "margin:0 0 18px;color:#475569;";
+  p.append(
+    document.createTextNode("You'll be signed out in "),
+    Object.assign(document.createElement("strong"), {
+      textContent: String(secondsLeft),
+    }),
+    document.createTextNode(" seconds to protect your account details.")
+  );
+  p.querySelector("strong").setAttribute("data-idle-count", "");
+
+  const stay = document.createElement("button");
+  stay.type = "button";
+  stay.textContent = "Stay signed in";
+  stay.style.cssText =
+    "background:#7b1113;color:#fff;border:none;padding:11px 22px;border-radius:8px;" +
+    "font:700 14px/1 inherit;cursor:pointer;";
+  stay.addEventListener("click", () => {
+    idleMarkActivity(true);
+    idleDismissWarning();
+  });
+
+  card.append(h, p, stay);
+  box.appendChild(card);
+  document.body.appendChild(box);
+  idleWarningEl = box;
+  stay.focus();
+}
+
+async function idleSignOut() {
+  idleWatching = false;
+  idleDismissWarning();
+  try { localStorage.removeItem(IDLE_KEY); } catch (_) {}
+  try { await supabaseClient.auth.signOut(); } catch (_) {}
+  // replace(), not href: the page behind this still holds someone's
+  // name and account numbers, and the back button should not walk
+  // back onto it.
+  window.location.replace("index.html?timeout=1");
+}
+
+function startIdleWatch() {
+  if (idleWatching) return;
+  idleWatching = true;
+  idleMarkActivity(true);
+
+  // pointerdown covers mouse, pen and touch in one. scroll and
+  // keydown catch reading and typing; visibilitychange catches
+  // returning to the tab, which is a real signal of presence.
+  ["pointerdown", "pointermove", "keydown", "scroll", "wheel", "focus"]
+    .forEach(evt => window.addEventListener(evt, () => idleMarkActivity(false),
+                                            { passive: true, capture: true }));
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) idleMarkActivity(true);
+  });
+
+  setInterval(() => {
+    if (!idleWatching) return;
+
+    const idleFor = Date.now() - idleReadLastActivity();
+
+    if (idleFor >= IDLE_LIMIT_MS) {
+      idleSignOut();
+      return;
+    }
+
+    const msLeft = IDLE_LIMIT_MS - idleFor;
+    if (msLeft <= IDLE_WARN_MS) idleShowWarning(Math.ceil(msLeft / 1000));
+    else idleDismissWarning();  // activity elsewhere reset the clock
+  }, IDLE_POLL_MS);
 }
 
 // ============================================================
