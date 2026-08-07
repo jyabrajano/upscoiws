@@ -40,7 +40,6 @@
       adminQueues = await mountAdminQueues({
         registrationsEl: document.getElementById("regQueue"),
         changesEl: document.getElementById("changeQueue"),
-        filterEl: document.getElementById("regFilter"),
         onApplied: () => refreshOwnProfile(),
       });
       adminManager = await mountAdminManager(

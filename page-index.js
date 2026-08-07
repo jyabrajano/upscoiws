@@ -435,21 +435,6 @@ form.addEventListener("submit", async (e) => {
     return;
   }
 
-  // Sent back here by the idle timeout in config.js. Worth saying
-  // plainly: an unexplained return to the sign-in page reads as the
-  // portal having dropped the session on its own, and the natural
-  // response to that is to stop trusting it.
-  if (params.get("timeout") === "1") {
-    showStatusRich(
-      "Signed out",
-      "You were signed out after five minutes of inactivity, so your " +
-      "account details aren't left on screen. Sign in again to carry on.",
-      "notice"
-    );
-    history.replaceState(null, "", window.location.pathname);
-    return;
-  }
-
   // A protected page will bounce someone back here with
   // ?access=pending / ?access=rejected when their account hasn't
   // been approved. Show why rather than an unexplained login screen.
