@@ -61,7 +61,7 @@
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com;
+  script-src 'self';
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data:;
@@ -74,7 +74,7 @@
 <link rel="icon" type="image/png" href="UPSeal.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.1"></script>
+<script src="vendor/supabase.js"></script>
 <script src="config.js"></script>
 <script src="sheets-config.js"></script>
 <script src="approval.js"></script>
@@ -1060,15 +1060,56 @@
     </div>
 
     <!-- ADMIN SECTION -->
-    <!--
-      The two approval queues (Account Registrations, and Name &
-      Account Number Changes) moved to users.html, above Manage Users.
-      They are administrator work on other people's accounts, which is
-      what that page is for; the dashboard is what someone sees about
-      their own. Administrators keeps its place here because granting
-      and removing admin rights is a different job from working a queue.
-    -->
     <div id="adminSection" style="display:none;">
+      <div class="card admin-card">
+        <h2 class="section-title">
+          Account Registrations
+          <span class="queue-count" id="regCount">0</span>
+        </h2>
+        <!--
+          Filters the pending list that is already on screen. The whole
+          queue arrives in one admin_pending_queue() call, so this is a
+          browser-side narrowing of rows already in memory — no round
+          trip, and no way for it to disagree with what the badge counts.
+
+          The suggestion list is drawn from that same in-memory queue,
+          so it can only ever offer people who are genuinely waiting.
+          It is an accelerator, not a gate: typing filters the list
+          whether or not a suggestion is ever chosen.
+
+          This used to start hidden and be revealed by approval.js only
+          when at least one registration was waiting — the idea being
+          not to put a search box over an empty queue. That was a bad
+          trade. It meant the control was invisible exactly when an
+          administrator went looking to see whether it existed, and
+          indistinguishable from a broken deploy. A filter over an
+          empty list costs nothing; a filter that vanishes costs a
+          bug report.
+        -->
+        <div class="queue-filter" id="regFilter">
+          <div class="queue-filter-field">
+            <input type="text" data-role="query" autocomplete="off"
+                   role="combobox" aria-expanded="false" aria-autocomplete="list"
+                   aria-controls="regFilterSuggest"
+                   aria-label="Filter registrations by name, email, or account number"
+                   placeholder="Filter by name, email, or account number">
+            <ul class="queue-suggest" id="regFilterSuggest" data-role="suggest"
+                role="listbox" aria-label="Matching registrations" hidden></ul>
+          </div>
+          <button type="button" data-act="clear">Clear</button>
+          <span class="queue-filter-note" data-role="note" role="status"></span>
+        </div>
+        <div id="regQueue"></div>
+      </div>
+
+      <div class="card admin-card">
+        <h2 class="section-title">
+          Name &amp; Account Number Changes
+          <span class="queue-count" id="changeCount">0</span>
+        </h2>
+        <div id="changeQueue"></div>
+      </div>
+
       <div class="card admin-card">
         <h2 class="section-title">Administrators</h2>
         <div id="adminManager"></div>

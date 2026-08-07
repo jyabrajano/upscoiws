@@ -1,0 +1,112 @@
+# ============================================================
+# U.P. System Cash Office Integrated Web System
+# Apache configuration — cPanel, shared hosting, most VPS setups.
+#
+# Optional. The portal works without this file: every page already
+# carries the same Content-Security-Policy in a <meta> tag. What a
+# real response header adds is frame-ancestors, which <meta> ignores
+# entirely, so this is the only place clickjacking can be refused.
+#
+# On Netlify or Cloudflare Pages this file does nothing — use
+# _headers there instead. Apache blocks .ht* files from being served
+# by default, so leaving it in place on any host is harmless.
+# ============================================================
+
+# ---- security headers ----
+<IfModule mod_headers.c>
+  # The connect-src line below is GENERATED. `node sync-csp.js` reads
+  # SUPABASE_URL out of config.js and rewrites it here as well as in
+  # the nine pages — do not edit it by hand.
+  #
+  # It did not always cover this file, and the omission was worse than
+  # it looks. When a response header and a <meta> tag both carry a CSP,
+  # the browser enforces BOTH policies independently: a request has to
+  # satisfy every one of them, so the effective policy is the
+  # intersection. A stale connect-src here therefore does not lose to
+  # the fresh one in the pages — it blocks every Supabase request the
+  # pages are allowing, and the symptom is a portal that looks like a
+  # backend outage with nothing in the network tab pointing at the CSP.
+  # That is exactly the failure sync-csp.js was written to prevent, in
+  # the one file it used to skip.
+  #
+  # script-src has no 'unsafe-inline'. That is deliberate and it is
+  # why the page-*.js files exist. Do not add it back to make an
+  # inline script work; move the script into the page's .js file.
+  #
+  # It no longer names cdn.jsdelivr.net either: supabase-js and xlsx
+  # are served from vendor/ on this host. See sync-vendor.js. If you
+  # ever go back to a CDN, this line and the nine <meta> tags all have
+  # to name it — the intersection rule above means missing one is not
+  # a partial failure, it is a total one.
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+
+  Header always set X-Frame-Options "DENY"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+  # Signed-in pages hold someone's name and account numbers. Told to
+  # cache, a shared browser will happily redraw them from disk after
+  # sign-out — the back button becomes a way to read the last
+  # person's statement.
+  <FilesMatch "\.(html)$">
+    Header always set Cache-Control "no-store, must-revalidate"
+  </FilesMatch>
+
+  # The .js files carry all the behaviour, and this rule used to cover
+  # .html only. That combination is worse than having neither: the
+  # markup updates the instant it is uploaded because it is no-store,
+  # while the scripts it depends on are served from cache with nothing
+  # but a heuristic deciding for how long. A deploy therefore lands as
+  # NEW MARKUP DRIVEN BY OLD CODE — new elements nothing wires up, new
+  # functions the pages call and cannot find — and the symptoms look
+  # like bugs in the feature that was just shipped rather than like a
+  # stale file. It reproduces for whoever has visited before and not
+  # for anyone testing in a fresh browser, which is the worst possible
+  # signature to debug.
+  #
+  # no-cache rather than no-store, deliberately: no-cache still lets
+  # the browser keep a copy, it just has to revalidate before using it.
+  # Unchanged files come back 304 Not Modified with no body, so this
+  # costs one small conditional request per file per load and never a
+  # re-download. no-store would forbid keeping the copy at all and
+  # re-download roughly 200KB of unchanged script on every page view.
+  <FilesMatch "\.(js)$">
+    Header always set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+
+  # Static assets are exempt on purpose. UPSeal.png does not change
+  # when the code does, and there is no version of this problem that
+  # it causes.
+  <FilesMatch "\.(png|jpg|jpeg|gif|svg|webp|ico|woff2?)$">
+    Header always set Cache-Control "public, max-age=604800"
+  </FilesMatch>
+</IfModule>
+
+# ---- correct types ----
+# A host that serves .js as text/plain will have every page silently
+# do nothing, because a strict CSP refuses to execute it.
+<IfModule mod_mime.c>
+  AddType application/javascript .js
+  AddType image/png             .png
+  AddDefaultCharset UTF-8
+</IfModule>
+
+# ---- don't advertise the directory ----
+<IfModule mod_autoindex.c>
+  Options -Indexes
+</IfModule>
+
+DirectoryIndex index.html
+
+# ---- never serve these, if one is ever uploaded by accident ----
+# deploy-schema.sql holds the entire database design. The email
+# templates are for pasting into Supabase, not for visitors. None of
+# them belong on a web root, and this is the cheap insurance against
+# the day one gets dragged in with everything else.
+<FilesMatch "\.(sql|md|txt|log|bak|old|zip)$">
+  Require all denied
+</FilesMatch>
+<FilesMatch "^(email-|deploy-|sync-|confirm-signup)">
+  Require all denied
+</FilesMatch>

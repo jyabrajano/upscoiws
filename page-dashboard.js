@@ -24,6 +24,7 @@
     .single();
   if (profileErr) console.error("Failed to load profile:", profileErr);
 
+  let adminQueues = null;
   let adminManager = null;
   if (isAdmin) {
     injectApprovalStyles();
@@ -36,9 +37,12 @@
     document.getElementById("usersLink").style.display = "";
 
     try {
-      // The two approval queues moved to users.html. mountAdminQueues()
-      // is still exported by approval.js and is called from
-      // page-users.js instead; nothing about it is dashboard-specific.
+      adminQueues = await mountAdminQueues({
+        registrationsEl: document.getElementById("regQueue"),
+        changesEl: document.getElementById("changeQueue"),
+        filterEl: document.getElementById("regFilter"),
+        onApplied: () => refreshOwnProfile(),
+      });
       adminManager = await mountAdminManager(
         document.getElementById("adminManager")
       );

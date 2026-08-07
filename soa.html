@@ -32,19 +32,11 @@
   and what applies is the intersection, so the older of the two wins
   every disagreement.
 
-  script-src names two CDN origins. This is the ROLLBACK build: both
-  libraries load from the CDN at a pinned version, so no vendor/ folder
-  is needed and the site works on upload alone.
-
-  This is a stopgap, not the target. Naming an origin in script-src
-  trusts every script on it, not the two wanted. The self-hosted build
-  (script-src 'self' alone, libraries under vendor/) is the one to get
-  back to once `node sync-vendor.js` has been run successfully -- see
-  sync-vendor.js in the full project archive.
-
-  What this build does keep is the version pin. The original tag was
-  @2, a floating major: whatever the CDN served at page-load time ran
-  with full privileges. @2.112.1 does not move on its own.
+  script-src is now 'self' alone. It used to name cdn.jsdelivr.net,
+  which trusted every script on a public CDN in order to load two of
+  them. Both libraries are self-hosted under vendor/ instead -- run
+  `node sync-vendor.js` once before the first deploy, or every page
+  will fail to start.
 
   script-src no longer carries 'unsafe-inline'. That is the whole
   point of the page-*.js files: every page used to end in a several
@@ -69,7 +61,7 @@
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com;
+  script-src 'self';
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data:;
@@ -82,8 +74,8 @@
 <link rel="icon" type="image/png" href="UPSeal.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.1"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
 <script src="config.js"></script>
 <script src="approval.js"></script>
 <style>

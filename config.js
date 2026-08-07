@@ -256,7 +256,11 @@ async function logout() {
 // ============================================================
 const IDLE_LIMIT_MS  = 5 * 60 * 1000;  // total inactivity allowed
 const IDLE_WARN_MS   = 60 * 1000;      // of which the last minute warns
-const IDLE_POLL_MS   = 5000;           // how often elapsed time is checked
+// 1s, not 5s. The dialog promises a per-second countdown, and at a 5s
+// poll it read 60, then 55, then 50 — which looks like a stuck or
+// broken timer at exactly the moment the person is deciding whether to
+// trust it. A comparison of two numbers once a second costs nothing.
+const IDLE_POLL_MS   = 1000;           // how often elapsed time is checked
 const IDLE_WRITE_MS  = 2000;           // throttle on localStorage writes
 const IDLE_KEY       = "scoiws:last-activity";
 
@@ -365,36 +369,73 @@ async function idleSignOut() {
   window.location.replace("index.html?timeout=1");
 }
 
+// Activity from a real interaction, as opposed to one the warning
+// dialog caused by existing.
+//
+// The warning is a full-viewport overlay, so once it is up every
+// pointer event lands on it. Counting those would mean the dialog
+// keeps the session alive simply by being on screen — and worse,
+// idleShowWarning() ends with stay.focus(), which fires a focus event
+// that this very listener hears. The listener is bound to window with
+// capture:true because that is the only way to catch focus (it does
+// not bubble), so the dialog was resetting the clock the instant it
+// appeared. The next poll then saw a fresh clock and dismissed it.
+// The result was a box that flashed for five seconds every four
+// minutes and a timeout that never once fired.
+//
+// The button's own click calls idleMarkActivity() directly, so
+// "Stay signed in" still works. Nothing else in the dialog counts.
+function idleActivityFromEvent(e) {
+  const target = e && e.target;
+  if (idleWarningEl && target instanceof Node && idleWarningEl.contains(target)) return;
+  idleMarkActivity(false);
+}
+
+// Pulled out of setInterval so visibilitychange can run the same
+// check. Returning to a tab needs to be a moment of reckoning, not
+// an amnesty.
+function idleCheck() {
+  if (!idleWatching) return;
+
+  const idleFor = Date.now() - idleReadLastActivity();
+
+  if (idleFor >= IDLE_LIMIT_MS) {
+    idleSignOut();
+    return;
+  }
+
+  const msLeft = IDLE_LIMIT_MS - idleFor;
+  if (msLeft <= IDLE_WARN_MS) idleShowWarning(Math.ceil(msLeft / 1000));
+  else idleDismissWarning();  // activity elsewhere reset the clock
+}
+
 function startIdleWatch() {
   if (idleWatching) return;
   idleWatching = true;
   idleMarkActivity(true);
 
-  // pointerdown covers mouse, pen and touch in one. scroll and
-  // keydown catch reading and typing; visibilitychange catches
-  // returning to the tab, which is a real signal of presence.
+  // pointerdown covers mouse, pen and touch in one. scroll and keydown
+  // catch reading and typing. focus needs capture:true — it does not
+  // bubble — which is what makes idleActivityFromEvent()'s guard
+  // necessary rather than merely tidy.
   ["pointerdown", "pointermove", "keydown", "scroll", "wheel", "focus"]
-    .forEach(evt => window.addEventListener(evt, () => idleMarkActivity(false),
+    .forEach(evt => window.addEventListener(evt, idleActivityFromEvent,
                                             { passive: true, capture: true }));
 
+  // Check on return, do NOT mark activity.
+  //
+  // This used to call idleMarkActivity(true), on the reasoning that
+  // coming back to the tab proves someone is there. It does — but it
+  // also forgave however long they had been away, and browsers freeze
+  // timers in background tabs, so the poll below could not have caught
+  // it in the meantime. Leave the portal minimised over lunch, come
+  // back, and the clock started over. That is the exact scenario this
+  // whole feature exists for.
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) idleMarkActivity(true);
+    if (!document.hidden) idleCheck();
   });
 
-  setInterval(() => {
-    if (!idleWatching) return;
-
-    const idleFor = Date.now() - idleReadLastActivity();
-
-    if (idleFor >= IDLE_LIMIT_MS) {
-      idleSignOut();
-      return;
-    }
-
-    const msLeft = IDLE_LIMIT_MS - idleFor;
-    if (msLeft <= IDLE_WARN_MS) idleShowWarning(Math.ceil(msLeft / 1000));
-    else idleDismissWarning();  // activity elsewhere reset the clock
-  }, IDLE_POLL_MS);
+  setInterval(idleCheck, IDLE_POLL_MS);
 }
 
 // ============================================================
