@@ -1678,3 +1678,149 @@ async function initEditAccountApproval(opts) {
 
   return { isAdmin, refreshNotice: paintNotice };
 }
+
+// ============================================================
+// The action log
+//
+// Every privileged operation in this app writes a row to
+// admin_actions -- approvals, rejections, edits, deletions, admin
+// grants and removals. admin_action_log() has existed to read them
+// back the whole time and nothing called it. The trail was written
+// faithfully and could not be looked at from inside the product: a
+// main administrator's only route to it was PostgREST by hand.
+//
+// An audit trail nobody opens is not doing the job it was built for.
+// The per-user history (openActions, above) answers "what happened to
+// this person"; this answers "what has been happening", which is the
+// question you ask when you don't yet know whose row to open.
+//
+// Main administrators only, and enforced in the function rather than
+// here -- admin_action_log() raises for anyone else, and the
+// admin_actions RLS policy is main-admin-select-only besides. The
+// gating below is so the panel doesn't sit there inviting a click
+// that can only fail.
+// ============================================================
+
+async function adminActionLog(query, limit) {
+  const { data, error } = await supabaseClient.rpc("admin_action_log", {
+    p_query: query || "",
+    p_limit: limit || 200,
+  });
+  if (error) throw error;
+  return data || [];
+}
+
+// Shared with mountUserDirectory's per-user history. Same vocabulary,
+// because the same event described two different ways in two panels
+// is how people conclude they are looking at two different events.
+const LOG_ACTION_WORDS = {
+  registration_approved:   "approved the registration of",
+  registration_rejected:   "rejected the registration of",
+  change_approved:         "applied an account change for",
+  change_rejected:         "rejected an account change for",
+  user_edited:             "edited the account of",
+  user_deleted:            "deleted the account of",
+  admin_added:             "made an administrator:",
+  admin_added_from_invite: "made an administrator (from an invitation):",
+  admin_invited:           "invited as an administrator:",
+  admin_invite_cancelled:  "cancelled the administrator invitation for",
+  admin_invite_expired:    "let an administrator invitation expire for",
+  admin_removed:           "removed administrator access from",
+  admin_promoted:          "made a main administrator:",
+  admin_demoted:           "removed main-administrator rank from",
+  admin_removal_requested: "requested removal of administrator",
+  account_disabled:        "disabled the account of",
+  account_enabled:         "re-enabled the account of",
+};
+
+function logEntryDetail(entry) {
+  const d = entry.detail || {};
+  if (d.from && d.to) {
+    const was = [d.from.full_name, d.from.account_number].filter(Boolean).join(" · ") || "—";
+    const now = [d.to.full_name, d.to.account_number].filter(Boolean).join(" · ") || "—";
+    return `${was} → ${now}`;
+  }
+  if (d.reason) return `Reason: ${d.reason}`;
+  if (d.note) return `Note: ${d.note}`;
+  if (entry.account_number) return entry.account_number;
+  return "";
+}
+
+async function mountActionLog(container) {
+  if (!container) return null;
+
+  // Ask first. A main administrator gets the panel; an ordinary
+  // administrator gets nothing at all rather than a search box that
+  // answers every query with "not authorized".
+  let isMain = false;
+  try {
+    isMain = await checkIsMainAdmin();
+  } catch (err) {
+    console.warn("Couldn't check main-administrator rank:", err);
+  }
+  if (!isMain) {
+    container.style.display = "none";
+    return null;
+  }
+  container.style.display = "";
+
+  container.innerHTML = `
+    <form class="dir-search" id="logSearchForm">
+      <input type="text" id="logQuery" autocomplete="off"
+             placeholder="Name, account number, email, or action">
+      <button type="submit" id="logSearchBtn">Search</button>
+      <button type="button" id="logClearBtn">Show all</button>
+    </form>
+    <div id="logResults"></div>`;
+
+  const form = container.querySelector("#logSearchForm");
+  const input = container.querySelector("#logQuery");
+  const clearBtn = container.querySelector("#logClearBtn");
+  const results = container.querySelector("#logResults");
+
+  async function load(query) {
+    results.innerHTML = '<div class="queue-empty">Loading…</div>';
+    try {
+      const entries = await adminActionLog(query, 200);
+      results.innerHTML = entries.length
+        ? entries.map(entry => {
+            const words = LOG_ACTION_WORDS[entry.action] ||
+                          String(entry.action || "").replace(/_/g, " ");
+            const subject = entry.subject_name
+              ? `${entry.subject_name} (${entry.subject_email || "—"})`
+              : (entry.subject_email || "—");
+            const detail = logEntryDetail(entry);
+            return `
+              <div class="log-row">
+                <div class="log-when">${escapeApprovalHtml(formatApprovalStamp(entry.at))}</div>
+                <div class="log-what">
+                  <strong>${escapeApprovalHtml(entry.actor_email || "system")}</strong>
+                  <span class="log-act">${escapeApprovalHtml(words)}</span>
+                  ${escapeApprovalHtml(subject)}
+                </div>
+                ${detail ? `<div class="log-detail">${escapeApprovalHtml(detail)}</div>` : ""}
+              </div>`;
+          }).join("")
+        : `<div class="queue-empty">${
+             query ? "Nothing recorded matches that." : "Nothing recorded yet."
+           }</div>`;
+    } catch (err) {
+      console.error("Couldn't read the action log:", err);
+      results.innerHTML =
+        '<div class="queue-empty">Couldn\'t read the action log. ' +
+        'Run deploy-schema.sql in the Supabase SQL Editor.</div>';
+    }
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    load(input.value.trim());
+  });
+  clearBtn.addEventListener("click", () => {
+    input.value = "";
+    load("");
+  });
+
+  await load("");
+  return { reload: () => load(input.value.trim()) };
+}

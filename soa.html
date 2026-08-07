@@ -25,9 +25,18 @@
 
   Keep this identical across every page listed in sync-csp.js's
   PAGES array. The connect-src line is
-  generated -- run `node sync-csp.js` rather than editing it by hand.
-  If you self-host the Supabase SDK, drop cdn.jsdelivr.net from
-  script-src.
+  generated -- run `node sync-csp.js` rather than editing it by hand,
+  and note that it now rewrites _htaccess too: a stale connect-src in
+  the response header is NOT overruled by a fresh one here. When both
+  a header and a <meta> policy are delivered the browser enforces BOTH,
+  and what applies is the intersection, so the older of the two wins
+  every disagreement.
+
+  script-src is now 'self' alone. It used to name cdn.jsdelivr.net,
+  which trusted every script on a public CDN in order to load two of
+  them. Both libraries are self-hosted under vendor/ instead -- run
+  `node sync-vendor.js` once before the first deploy, or every page
+  will fail to start.
 
   script-src no longer carries 'unsafe-inline'. That is the whole
   point of the page-*.js files: every page used to end in a several
@@ -52,7 +61,7 @@
 -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' https://cdn.jsdelivr.net;
+  script-src 'self';
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data:;
@@ -65,8 +74,8 @@
 <link rel="icon" type="image/png" href="UPSeal.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
 <script src="config.js"></script>
 <script src="approval.js"></script>
 <style>

@@ -897,6 +897,186 @@ async function recordPrivacyNoticeAck() {
   }
 }
 
+// ------------------------------------------------------------
+// Deferred acknowledgements
+//
+// With email confirmation on, signUp() returns no session, so
+// registration.html has no JWT to write the receipt with even though
+// it is the page that actually showed the notice and watched the box
+// get ticked. The receipt has to wait for first sign-in.
+//
+// It used to wait by simply calling recordPrivacyNoticeAck() on EVERY
+// successful sign-in. That wrote a timestamped, versioned
+// acknowledgement for people who had never been shown anything —
+// Google SSO goes nowhere near registration.html, so an SSO user got a
+// receipt attesting to a reading that did not happen. A record like
+// that is worse than no record: it is the document you would produce
+// to demonstrate compliance, and it would be false.
+//
+// So the intent is parked here at the moment it is genuinely formed,
+// and only redeemed for the address that formed it.
+//
+// localStorage rather than a cookie or the URL: it survives the round
+// trip through the mail client, it is scoped to this origin, and it
+// cannot be set by a link someone was sent. Losing it — different
+// device, cleared browser — costs an acknowledgement the person makes
+// once more in the gate below. It never costs them access.
+// ------------------------------------------------------------
+const PENDING_ACK_KEY = "scoiws:pending-privacy-ack";
+
+function rememberPendingPrivacyAck(email) {
+  try {
+    localStorage.setItem(PENDING_ACK_KEY, JSON.stringify({
+      email: String(email || "").trim().toLowerCase(),
+      version: PRIVACY_NOTICE_VERSION,
+      at: new Date().toISOString(),
+    }));
+  } catch (_) {
+    // Private mode or storage disabled. The gate below is the backstop.
+  }
+}
+
+// True only when this browser holds an unredeemed acknowledgement from
+// THIS person for THIS version of the notice. A stale version doesn't
+// carry over — that is the whole reason the version is recorded.
+function redeemPendingPrivacyAck(email) {
+  try {
+    const raw = localStorage.getItem(PENDING_ACK_KEY);
+    if (!raw) return false;
+    const pending = JSON.parse(raw);
+    const matches =
+      pending &&
+      pending.version === PRIVACY_NOTICE_VERSION &&
+      pending.email === String(email || "").trim().toLowerCase();
+    if (matches) localStorage.removeItem(PENDING_ACK_KEY);
+    return Boolean(matches);
+  } catch (_) {
+    return false;
+  }
+}
+
+// ------------------------------------------------------------
+// The acknowledgement gate
+//
+// Shown to anyone signed in whose profile carries no acknowledgement,
+// or one for an older version of the notice. That covers the people
+// the registration form never sees — Google SSO, accounts set up by
+// the Cash Office — and everyone at once when the notice is reissued.
+//
+// RA 10173 s.16(a) is a right to be INFORMED, so what this owes the
+// person is the notice itself and a moment to read it, not a consent
+// bargain. Hence: links that open in a new tab, one button, and no
+// second option to weigh it against. It is not a cookie banner.
+//
+// Non-blocking on failure. If the profile can't be read, the person
+// gets on with their work and is asked again next time — refusing
+// someone their own statement of account over an unreadable column
+// would be the wrong trade in both directions.
+// ------------------------------------------------------------
+async function ensurePrivacyNoticeAck(email) {
+  try {
+    const { data, error } = await supabaseClient
+      .from("profiles")
+      .select("privacy_notice_ack_at, privacy_notice_ack_version")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data && data.privacy_notice_ack_at &&
+        data.privacy_notice_ack_version === PRIVACY_NOTICE_VERSION) {
+      return true;
+    }
+
+    // Ticked the box at registration, first sign-in on this browser.
+    if (redeemPendingPrivacyAck(email)) return recordPrivacyNoticeAck();
+
+    return showPrivacyNoticeGate();
+  } catch (err) {
+    console.warn("Couldn't check the privacy notice acknowledgement:", err);
+    return false;
+  }
+}
+
+// Built in JS for the same reason showConnectionNotice() is: it has to
+// work on every protected page without editing each one, and inline
+// style is allowed by style-src where inline script is not.
+function showPrivacyNoticeGate() {
+  return new Promise((resolve) => {
+    if (document.getElementById("privacyGate")) return resolve(false);
+
+    const build = () => {
+      const box = document.createElement("div");
+      box.id = "privacyGate";
+      box.setAttribute("role", "dialog");
+      box.setAttribute("aria-modal", "true");
+      box.setAttribute("aria-labelledby", "privacyGateTitle");
+      box.style.cssText =
+        "position:fixed;inset:0;z-index:9997;display:flex;align-items:center;" +
+        "justify-content:center;background:rgba(15,23,42,0.55);padding:24px;" +
+        "font:14px/1.55 system-ui,sans-serif;color:#0f172a;";
+
+      const card = document.createElement("div");
+      card.style.cssText =
+        "max-width:440px;background:#fff;border-radius:12px;padding:28px 26px;" +
+        "box-shadow:0 12px 40px rgba(15,23,42,0.25);";
+
+      const h = document.createElement("h2");
+      h.id = "privacyGateTitle";
+      h.textContent = "Before you continue";
+      h.style.cssText = "margin:0 0 10px;font-size:17px;font-weight:700;";
+
+      const p = document.createElement("p");
+      p.style.cssText = "margin:0 0 18px;color:#475569;";
+      p.append(
+        document.createTextNode("This portal holds your name and account numbers. Please read the "),
+      );
+
+      const privacyLink = document.createElement("a");
+      privacyLink.href = "privacy.html";
+      privacyLink.target = "_blank";
+      privacyLink.rel = "noopener";
+      privacyLink.textContent = "Privacy Notice";
+      privacyLink.style.cssText = "color:#7b1113;font-weight:600;";
+
+      const termsLink = document.createElement("a");
+      termsLink.href = "terms.html";
+      termsLink.target = "_blank";
+      termsLink.rel = "noopener";
+      termsLink.textContent = "Terms of Use";
+      termsLink.style.cssText = "color:#7b1113;font-weight:600;";
+
+      p.append(
+        privacyLink,
+        document.createTextNode(" and the "),
+        termsLink,
+        document.createTextNode("."),
+      );
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "I have read the Privacy Notice";
+      btn.style.cssText =
+        "background:#7b1113;color:#fff;border:none;padding:11px 22px;border-radius:8px;" +
+        "font:700 14px/1 inherit;cursor:pointer;";
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        btn.textContent = "Saving…";
+        const ok = await recordPrivacyNoticeAck();
+        box.remove();
+        resolve(ok);
+      });
+
+      card.append(h, p, btn);
+      box.appendChild(card);
+      document.body.appendChild(box);
+      btn.focus();
+    };
+
+    if (document.body) build();
+    else document.addEventListener("DOMContentLoaded", build);
+  });
+}
+
 // ============================================================
 // Password policy
 //

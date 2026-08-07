@@ -444,9 +444,17 @@ form.addEventListener("submit", async (e) => {
     // Written before signOut(), because record_privacy_notice_ack()
     // identifies the person from their JWT and there is no JWT after.
     // Only possible when signUp returned a session -- with email
-    // confirmation on it does not, so the receipt is written on first
-    // sign-in instead (see page-index.js).
+    // confirmation on it does not.
+    //
+    // When it does not, the acknowledgement is parked in this browser
+    // and redeemed at first sign-in. This page is the only place that
+    // actually SHOWS the notice and watches the box get ticked, so it
+    // is the only place entitled to say the acknowledgement happened.
+    // page-index.js used to assert it on every sign-in regardless,
+    // which meant Google SSO users -- who never load this page --
+    // collected receipts for a notice they were never shown.
     if (data.session) await recordPrivacyNoticeAck();
+    else rememberPendingPrivacyAck(email);
 
     await supabaseClient.auth.signOut();
 

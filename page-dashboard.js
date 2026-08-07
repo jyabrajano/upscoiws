@@ -3,6 +3,18 @@
   if (!session) return;
   const user = session.user;
 
+  // RA 10173 s.16(a) — the right to be informed. Shows the notice to
+  // anyone whose profile carries no acknowledgement or one for an
+  // older version: Google SSO users, accounts the Cash Office set up
+  // directly, and everybody at once whenever PRIVACY_NOTICE_VERSION
+  // moves. The dashboard is where this belongs because it is the one
+  // page every signed-in person lands on.
+  //
+  // Not awaited. It resolves only when the person clicks, and the rest
+  // of the page has no reason to sit blank behind a modal they are
+  // reading past.
+  ensurePrivacyNoticeAck(user.email);
+
   const isAdmin = await checkIsAdmin();
 
   const { data: profile, error: profileErr } = await supabaseClient
@@ -252,8 +264,16 @@
     const firstDayIndex = new Date(year, month, 1).getDay();
     const totalDays = new Date(year, month + 1, 0).getDate();
 
+    // createElement rather than `innerHTML +=`. The += form reparses
+    // and rebuilds the entire grid on every iteration, and it is the
+    // only place in this file that doesn't build nodes directly — the
+    // day cells below already do. Trivial at six blanks; the reason to
+    // fix it is that it reads as the house style and isn't.
     for (let i = 0; i < firstDayIndex; i++) {
-      calGrid.innerHTML += `<div class="cal-cell" style="opacity: 0.2;"></div>`;
+      const blank = document.createElement("div");
+      blank.className = "cal-cell";
+      blank.style.opacity = "0.2";
+      calGrid.appendChild(blank);
     }
 
     // todayLocalISO(), not toISOString(): dateStr just below is built

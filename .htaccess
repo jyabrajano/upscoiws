@@ -14,14 +14,31 @@
 
 # ---- security headers ----
 <IfModule mod_headers.c>
-  # Keep connect-src in step with SUPABASE_URL in config.js. If you
-  # change Supabase projects, `node sync-csp.js` updates the seven
-  # pages but NOT this file — change it here by hand.
+  # The connect-src line below is GENERATED. `node sync-csp.js` reads
+  # SUPABASE_URL out of config.js and rewrites it here as well as in
+  # the nine pages — do not edit it by hand.
+  #
+  # It did not always cover this file, and the omission was worse than
+  # it looks. When a response header and a <meta> tag both carry a CSP,
+  # the browser enforces BOTH policies independently: a request has to
+  # satisfy every one of them, so the effective policy is the
+  # intersection. A stale connect-src here therefore does not lose to
+  # the fresh one in the pages — it blocks every Supabase request the
+  # pages are allowing, and the symptom is a portal that looks like a
+  # backend outage with nothing in the network tab pointing at the CSP.
+  # That is exactly the failure sync-csp.js was written to prevent, in
+  # the one file it used to skip.
   #
   # script-src has no 'unsafe-inline'. That is deliberate and it is
   # why the page-*.js files exist. Do not add it back to make an
   # inline script work; move the script into the page's .js file.
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+  #
+  # It no longer names cdn.jsdelivr.net either: supabase-js and xlsx
+  # are served from vendor/ on this host. See sync-vendor.js. If you
+  # ever go back to a CDN, this line and the nine <meta> tags all have
+  # to name it — the intersection rule above means missing one is not
+  # a partial failure, it is a total one.
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 
   Header always set X-Frame-Options "DENY"
   Header always set X-Content-Type-Options "nosniff"

@@ -69,6 +69,128 @@ function activeDateField() {
   return DATE_FIELD[currentTableType] || "txn_date";
 }
 
+// ============================================================
+// Fetching
+//
+// The cap is far above any realistic single-person history. If a fetch
+// comes back sitting exactly on it, the rows are the most recent ones
+// (both queries sort descending) and the notice says so rather than
+// quietly presenting a partial statement as a whole one.
+//
+// The date range is applied HERE, in the query, and not only in
+// applyFilters(). It used to be browser-side alone: everything was
+// fetched once on load and the From/To boxes sliced the array. That
+// made the truncation notice's own advice impossible to follow — it
+// said "narrow the date range to see earlier ones", but narrowing the
+// range never refetched, so no filter could reach a row outside the
+// 5,000 already in memory. Anyone who hit the cap and did as they were
+// told watched rows disappear and concluded the statement was wrong.
+//
+// Now a change to either box refetches within the new bounds, so the
+// advice is true: a narrower window really does reach further back.
+// ============================================================
+const TXN_FETCH_LIMIT = 5000;
+
+// Set once the session is known; the loader is called from the filter
+// handlers, which sit outside the IIFE that holds `user`.
+let myEmail = "";
+
+// What the rows currently in memory were fetched under, so a filter
+// change that doesn't move the bounds doesn't hit the network.
+let loadedFrom = null;
+let loadedTo = null;
+
+async function loadTransactions(fromISO, toISO) {
+  const from = fromISO || "";
+  const to = toISO || "";
+
+  // ATM transactions: every account the person holds, off
+  // public.transactions. CHECK transactions: a different table
+  // entirely — public.released_transactions, scoped by the person's
+  // email (user_email) rather than an account number. The two are
+  // independent queries, so a problem with one doesn't block the other.
+  //
+  // Each is bounded on its OWN date column: ATM filters on txn_date,
+  // CHECK on dreleased. That is the same mapping DATE_FIELD holds for
+  // the browser-side filter, and it has to be, or the two would
+  // disagree about which rows the window contains.
+  let atmQuery = null;
+
+  if (myAccountNumbers.length) {
+    atmQuery = supabaseClient
+      .from("transactions")
+      .select("txn_date, dvno, ada, description, amount, acct_no")
+      .in("acct_no", myAccountNumbers);
+    if (from) atmQuery = atmQuery.gte(DATE_FIELD.ATM, from);
+    if (to) atmQuery = atmQuery.lte(DATE_FIELD.ATM, to);
+    atmQuery = atmQuery.order("txn_date", { ascending: false }).limit(TXN_FETCH_LIMIT);
+  }
+
+  // released_transactions.user_email holds one address on most rows
+  // but a comma-separated list on some — a check made out to a
+  // supplier who gave two or three contacts. A whole-value match
+  // therefore misses people who are genuinely on the row, the same
+  // way a whole-value match on profiles.account_number would miss
+  // the second of somebody's two accounts.
+  //
+  // So the fetch is deliberately loose (contains, case-insensitive)
+  // and parseEmails() below makes the real decision on exact
+  // membership. Row-level security is what actually gates access,
+  // so widening the filter here doesn't widen what can be read.
+  let checkQuery = supabaseClient
+    .from("released_transactions")
+    // No .eq("status", "RELEASED") — every row in this table is
+    // RELEASED today, and a filter would silently hide rows if an
+    // import ever wrote the value differently. Add one here if
+    // that table starts carrying mixed statuses.
+    .select("dreleased, txn_date, ada_rada_check, description_unit, amount, user_email")
+    .ilike("user_email", `%${myEmail}%`);
+  if (from) checkQuery = checkQuery.gte(DATE_FIELD.CHECK, from);
+  if (to) checkQuery = checkQuery.lte(DATE_FIELD.CHECK, to);
+  checkQuery = checkQuery.order("dreleased", { ascending: false }).limit(TXN_FETCH_LIMIT);
+
+  const [atmResult, checkResult] = await Promise.all([
+    atmQuery || Promise.resolve({ data: [], error: null }),
+    checkQuery,
+  ]);
+
+  if (atmResult.error) console.error("Couldn't load ATM transactions:", atmResult.error);
+  if (checkResult.error) console.error("Couldn't load CHECK transactions:", checkResult.error);
+
+  allTxns = atmResult.data || [];
+  checkTxns = (checkResult.data || []).filter(
+    r => parseEmails(r.user_email).includes(myEmail)
+  );
+
+  loadedFrom = from;
+  loadedTo = to;
+
+  // Checked against the raw fetch, not the filtered result — the
+  // client-side email filter legitimately removes rows, and that is
+  // not truncation.
+  const notice = document.getElementById("truncNotice");
+  if (notice) {
+    const truncated =
+      (atmResult.data || []).length >= TXN_FETCH_LIMIT ||
+      (checkResult.data || []).length >= TXN_FETCH_LIMIT;
+    if (truncated) {
+      notice.textContent =
+        `Showing the most recent ${TXN_FETCH_LIMIT.toLocaleString()} transactions ` +
+        "in this date range. Narrow the range to see earlier ones, or ask the " +
+        "Cash Office for a full statement.";
+      notice.hidden = false;
+    } else {
+      // Cleared on every load, not just set — a narrower range that
+      // comes back under the cap must take the warning away with it,
+      // or the person is told their complete statement is partial.
+      notice.hidden = true;
+      notice.textContent = "";
+    }
+  }
+
+  return { atmError: atmResult.error, checkError: checkResult.error };
+}
+
 (async () => {
   const session = await requireSession();
   if (!session) return;
@@ -129,93 +251,11 @@ function activeDateField() {
 
   const tbody = document.getElementById("txnBody");
 
-  // ATM transactions: every account the person holds, off
-  // public.transactions.
-  // CHECK transactions: a different table entirely —
-  // public.released_transactions, scoped by the person's email
-  // (user_email) rather than an account number. The two are
-  // independent queries, so a problem with one doesn't block
-  // the other.
-  const queries = [];
+  myEmail = String(user.email || "").trim().toLowerCase();
 
-  // Neither query used to be bounded, and the whole history is
-  // fetched up front so the date filters can run in the browser.
-  // That is fine at today's volumes and is not fine forever: this
-  // table only grows, and an unbounded select has no failure mode
-  // that looks like a bug — it just gets slower every year.
-  //
-  // The cap is far above any realistic single-person history. If a
-  // fetch ever comes back sitting exactly on it, the rows are the
-  // most recent ones (both queries sort descending) and the notice
-  // below says so rather than quietly showing a partial statement
-  // as though it were complete.
-  const TXN_FETCH_LIMIT = 5000;
+  const { atmError, checkError } = await loadTransactions("", "");
 
-  if (myAccounts.length) {
-    queries.push(
-      supabaseClient
-        .from("transactions")
-        .select("txn_date, dvno, ada, description, amount, acct_no")
-        .in("acct_no", myAccounts)
-        .order("txn_date", { ascending: false })
-        .limit(TXN_FETCH_LIMIT)
-    );
-  } else {
-    queries.push(Promise.resolve({ data: [], error: null }));
-  }
-
-  // released_transactions.user_email holds one address on most rows
-  // but a comma-separated list on some — a check made out to a
-  // supplier who gave two or three contacts. A whole-value match
-  // therefore misses people who are genuinely on the row, the same
-  // way a whole-value match on profiles.account_number would miss
-  // the second of somebody's two accounts.
-  //
-  // So the fetch is deliberately loose (contains, case-insensitive)
-  // and parseEmails() below makes the real decision on exact
-  // membership. Row-level security is what actually gates access,
-  // so widening the filter here doesn't widen what can be read.
-  const wantedEmail = String(user.email || "").trim().toLowerCase();
-
-  queries.push(
-    supabaseClient
-      .from("released_transactions")
-      // No .eq("status", "RELEASED") — every row in this table is
-      // RELEASED today, and a filter would silently hide rows if an
-      // import ever wrote the value differently. Add one here if
-      // that table starts carrying mixed statuses.
-      .select("dreleased, txn_date, ada_rada_check, description_unit, amount, user_email")
-      .ilike("user_email", `%${wantedEmail}%`)
-      .order("dreleased", { ascending: false })
-      .limit(TXN_FETCH_LIMIT)
-  );
-
-  const [atmResult, checkResult] = await Promise.all(queries);
-
-  if (atmResult.error) console.error("Couldn't load ATM transactions:", atmResult.error);
-  if (checkResult.error) console.error("Couldn't load CHECK transactions:", checkResult.error);
-
-  allTxns = atmResult.data || [];
-  checkTxns = (checkResult.data || []).filter(
-    r => parseEmails(r.user_email).includes(wantedEmail)
-  );
-
-  // Say so rather than showing a truncated statement as a whole one.
-  // Checked against the raw fetch, not the filtered result — the
-  // client-side email filter legitimately removes rows, and that is
-  // not truncation.
-  if ((atmResult.data || []).length >= TXN_FETCH_LIMIT ||
-      (checkResult.data || []).length >= TXN_FETCH_LIMIT) {
-    const notice = document.getElementById("truncNotice");
-    if (notice) {
-      notice.textContent =
-        `Showing the most recent ${TXN_FETCH_LIMIT.toLocaleString()} transactions. ` +
-        "Narrow the date range to see earlier ones, or ask the Cash Office for a full statement.";
-      notice.hidden = false;
-    }
-  }
-
-  if (atmResult.error && checkResult.error) {
+  if (atmError && checkError) {
     tbody.innerHTML =
       '<tr><td colspan="5" class="empty">Couldn\'t load your statement. Try again later.</td></tr>';
     return;
@@ -365,7 +405,11 @@ function updatePrintSub() {
 
 // Date range and account are one filter now — changing either
 // re-runs both, so they can't contradict each other.
-function applyFilters() {
+//
+// Async because the date range is a query bound, not just an array
+// slice: moving it refetches. The account picker is browser-side
+// only, so picking an account never costs a round trip.
+async function applyFilters() {
   const fromVal = document.getElementById("dateFrom").value;
   const toVal = document.getElementById("dateTo").value;
   const acctSel = document.getElementById("acctFilter");
@@ -382,6 +426,20 @@ function applyFilters() {
   if (fromVal && toVal && fromVal > toVal) {
     note.textContent = '"From" date must be before "To" date.';
     return;
+  }
+
+  // Only when the bounds actually moved. Switching tabs and picking an
+  // account both call through here, and neither changes what the
+  // database was asked for.
+  if (fromVal !== loadedFrom || toVal !== loadedTo) {
+    note.textContent = "Loading…";
+    try {
+      await loadTransactions(fromVal, toVal);
+    } catch (err) {
+      console.error("Couldn't reload transactions for that date range:", err);
+      note.textContent = "Couldn't load that date range. Try again.";
+      return;
+    }
   }
 
   const typeScoped = currentTableType === "ATM" ? allTxns : checkTxns;

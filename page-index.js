@@ -189,9 +189,16 @@ ssoBtn.addEventListener("click", async () => {
           // it is a query parameter the client controls and can drop.
           // The domain rule is enforced in handle_new_user(), gated by
           // up_mail_restriction_enabled(), which currently returns
-          // false. Nothing restricts the domain today; flip that
-          // function and UP_MAIL_RESTRICTION_ENABLED in
-          // registration.html together to turn it on.
+          // false. Nothing restricts the domain today.
+          //
+          // To turn it on, change that SQL function and nothing else.
+          // This comment used to say to flip it "together with
+          // UP_MAIL_RESTRICTION_ENABLED in registration.html", which
+          // has not been true since that second copy was removed —
+          // config.js explains at length why one switch replaced two.
+          // Following the old instruction sends you looking for a
+          // constant that isn't there, and the natural next move is to
+          // add it back.
           hd: 'up.edu.ph'
         }
       }
@@ -287,20 +294,36 @@ form.addEventListener("submit", async (e) => {
       throw error;
     }
 
+    // With email confirmation on, signUp() returns no session, so
+    // registration.html had no JWT to write the privacy-notice receipt
+    // with. First sign-in is the earliest moment there is one.
+    //
+    // This used to call recordPrivacyNoticeAck() unconditionally, on
+    // the reasoning that the RPC is idempotent so calling it always is
+    // harmless. Idempotent it is; harmless it is not. It writes an
+    // acknowledgement for whoever is signing in, and only people who
+    // came through registration.html have acknowledged anything --
+    // Google SSO never loads that page, so those users were being
+    // issued a timestamped, versioned receipt for a notice they had
+    // never seen. The receipt is the artefact you would produce to
+    // show compliance with RA 10173 s.16, which makes a false one
+    // considerably worse than a missing one.
+    //
+    // Now it redeems only a marker that registration.html actually
+    // parked for this address. Everyone else is asked properly, by the
+    // gate on the dashboard.
+    //
+    // Awaited, unlike before: the very next branch can call signOut(),
+    // and a write racing its own JWT out of existence is not a receipt
+    // anyone should rely on.
+    if (redeemPendingPrivacyAck(data.user.email)) {
+      await recordPrivacyNoticeAck();
+    }
+
     // The credentials were right, but that isn't the same as
     // having access. The database enforces this too (see
     // deploy-schema.sql) — this check is so the person gets a
     // straight answer instead of an empty dashboard.
-    // With email confirmation on, signUp() returns no session, so
-    // registration.html had no JWT to write the privacy-notice
-    // receipt with. First sign-in is the earliest moment there is
-    // one. The RPC only writes when nothing is recorded yet or the
-    // version has moved on, so calling it here every time is safe --
-    // it will not keep pushing the date forward.
-    recordPrivacyNoticeAck();
-
-    // The credentials were right, but that isn't the same as
-    // having access.
     const state = await getApprovalState(data.user.email);
     if (state.status !== "approved") {
       await supabaseClient.auth.signOut();

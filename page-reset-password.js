@@ -127,14 +127,72 @@ formEl.addEventListener("submit", async (e) => {
 // password is exactly the operation that must not ride on an existing
 // session: the whole point of a recovery link is that it proves
 // control of the mailbox.
-const RECOVERY_IN_URL = (() => {
+//
+// The first attempt at that fix corroborated the session with
+// "type=recovery appeared in the URL", which reintroduced the same
+// hole in a quieter form. type=recovery is a LABEL, not a credential:
+// it is four words anyone can type into the address bar. Navigating an
+// already-signed-in browser to
+//
+//     reset-password.html#type=recovery
+//
+// satisfied the check, the poll below found the ordinary dashboard
+// session, and the form unlocked. updateUser() then changed the
+// password of whoever was signed in, without the old one — exactly the
+// takeover the comment above says is being prevented.
+//
+// So the gate now asks for two things that cannot be typed:
+//
+//   a credential   #access_token=... (implicit) or ?code=... (PKCE).
+//                  type= is ignored entirely; it carries no proof.
+//   a NEW session  the session in hand must not be the one that was
+//                  already in storage when this page loaded.
+//
+// The second is what closes the remaining gap. A forged or expired
+// access_token in the fragment fails to parse, leaves the pre-existing
+// session untouched, and would otherwise still look like "credential
+// present + session present".
+const RECOVERY_CREDENTIAL_IN_URL = (() => {
   const h = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const q = new URLSearchParams(window.location.search);
-  return h.get("type") === "recovery" ||
-         q.get("type") === "recovery" ||
-         Boolean(h.get("access_token")) ||
-         Boolean(q.get("code"));
+  return Boolean(h.get("access_token")) || Boolean(q.get("code"));
 })();
+
+// The access token already in storage at page load, or null.
+//
+// Read synchronously, as the first thing this file does, so it happens
+// before the client's asynchronous URL parse can overwrite it. Reaching
+// into supabase-js's storage key is not lovely, but the alternative is
+// asking the library a question it has no API for: "is this session the
+// one you just minted, or the one you found?"
+//
+// Both failure modes are safe. Can't find the key, or it isn't
+// JSON: returns null, no session matches null, and the freshness test
+// passes on the strength of the credential alone. Read too late (the
+// client already swapped in the new session): the tokens compare equal,
+// the test FAILS, and a legitimate reset is refused with "link
+// expired" — annoying, recoverable in one click, and not a takeover.
+// PASSWORD_RECOVERY below is what keeps that case rare.
+const PRIOR_ACCESS_TOKEN = (() => {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !/^sb-.*-auth-token$/.test(key)) continue;
+      const parsed = JSON.parse(localStorage.getItem(key));
+      if (parsed && typeof parsed.access_token === "string") return parsed.access_token;
+    }
+  } catch (_) {
+    // Private mode, storage disabled, a shape we don't recognise.
+  }
+  return null;
+})();
+
+// A session is evidence only if the link produced it.
+function sessionIsFromThisLink(session) {
+  return Boolean(session) &&
+         RECOVERY_CREDENTIAL_IN_URL &&
+         session.access_token !== PRIOR_ACCESS_TOKEN;
+}
 
 // ---- getting a session out of the link ----
 //
@@ -164,10 +222,18 @@ const RECOVERY_IN_URL = (() => {
     return;
   }
 
+  // `settled` means "a verdict has been shown", not "no further
+  // verdict is possible". The poll gives up after 2.5s, and on a slow
+  // connection the client can finish parsing the token after that —
+  // so unlock() has to be able to overturn a dead end that has already
+  // been drawn. It guards only against unlocking twice, which would
+  // steal focus from someone mid-keystroke.
   let settled = false;
+  let unlocked = false;
 
   function unlock() {
-    if (settled) return;
+    if (unlocked) return;
+    unlocked = true;
     settled = true;
 
     // Take the token out of the address bar. It stays valid for the
@@ -182,30 +248,36 @@ const RECOVERY_IN_URL = (() => {
     pwInput.focus();
   }
 
-  // PASSWORD_RECOVERY is Supabase's own confirmation that what it
-  // just consumed was a recovery token, so it stands on its own.
-  // A plain session does not: it has to be corroborated by a recovery
-  // token having been in the URL when the page loaded.
-  let recoveryConfirmed = RECOVERY_IN_URL;
+  // PASSWORD_RECOVERY is Supabase's own confirmation that what it just
+  // consumed was a recovery token. It is the only signal here that
+  // comes from the library rather than from the URL, so it stands on
+  // its own and is the path almost every real reset takes.
+  //
+  // A plain session never stands on its own: it has to be a session
+  // this link produced, which is what sessionIsFromThisLink() checks.
 
   supabaseClient.auth.onAuthStateChange((event, session) => {
     if (event === "PASSWORD_RECOVERY") {
-      recoveryConfirmed = true;
       unlock();
       return;
     }
-    if (session && recoveryConfirmed) unlock();
+    if (sessionIsFromThisLink(session)) unlock();
   });
 
   // Poll alongside the listener. Ten tries at 250ms covers a slow
   // network without leaving anyone staring at "Checking your link…"
   // forever when the token was never there to begin with.
+  //
+  // `sawSession` deliberately records that SOME session exists, which
+  // is a different thing from the link having worked — it is what
+  // picks the "Already signed in" wording at the bottom rather than
+  // "No reset link found".
   let sawSession = false;
   for (let i = 0; i < 10 && !settled; i++) {
     const { data } = await supabaseClient.auth.getSession();
     if (data && data.session) {
       sawSession = true;
-      if (recoveryConfirmed) { unlock(); return; }
+      if (sessionIsFromThisLink(data.session)) { unlock(); return; }
       break;
     }
     await new Promise(r => setTimeout(r, 250));

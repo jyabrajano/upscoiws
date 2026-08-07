@@ -87,6 +87,19 @@
       'Run deploy-schema.sql ' +
       'in the Supabase SQL Editor.</p>';
   }
+
+  // Separately, and after: the log is a main-administrator panel that
+  // hides itself for everyone else, and a failure to mount it should
+  // not take the user directory down with it. mountActionLog() shows
+  // the card only if it has something to put in it.
+  try {
+    // Returns null when the signed-in administrator isn't a main one,
+    // which is also the answer to whether the card should exist.
+    const log = await mountActionLog(document.getElementById("actionLog"));
+    if (log) document.getElementById("actionLogCard").style.display = "";
+  } catch (err) {
+    console.error("Couldn't set up the action log:", err);
+  }
 })();
 
 // See the note in page-dashboard.js: onclick="logout()" kept the page
