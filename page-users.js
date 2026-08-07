@@ -75,10 +75,33 @@
     }
   });
 
-  // ---- the panel ----
+  // ---- the panels ----
+
+  injectApprovalStyles();
+
+  // The two approval queues, moved here from the dashboard. Mounted
+  // first because they sit above Manage Users on the page, and a queue
+  // that arrives after the search box has already painted makes the
+  // page jump under whoever is reading it.
+  //
+  // onApplied is not passed. On the dashboard it refreshed the
+  // administrator's own identity card, because approving a name change
+  // could be their own. There is no identity card on this page, and
+  // mountAdminQueues() reloads its own queues regardless.
+  try {
+    await mountAdminQueues({
+      registrationsEl: document.getElementById("regQueue"),
+      changesEl: document.getElementById("changeQueue"),
+      filterEl: document.getElementById("regFilter"),
+    });
+  } catch (err) {
+    console.error("Couldn't set up the approval queues:", err);
+    document.getElementById("regQueue").innerHTML =
+      '<p class="empty">These queues need the latest database functions. ' +
+      'Run deploy-schema.sql in the Supabase SQL Editor.</p>';
+  }
 
   try {
-    injectApprovalStyles();
     await mountUserDirectory(document.getElementById("userDirectory"));
   } catch (err) {
     console.error("Couldn't set up the user search:", err);

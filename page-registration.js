@@ -71,6 +71,13 @@ function clearStatus() {
   shown = "";
 }
 
+// Waits for typing to stop before asking the database. Without
+// this every keystroke would be a round trip.
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
 const nameBuilder = attachNameBuilder({
   firstInput,
   miInput,
@@ -86,6 +93,9 @@ const acctList = attachAccountNumberList(
 
 // ---- state the button reads ----
 
+let nameClash = false;   // full name already on file
+let acctClash = false;   // one of the account numbers already on file
+let checking  = false;   // a duplicate check is queued or in flight
 let sending   = false;   // signUp is in flight
 let refused   = false;   // the last attempt was turned down
 let asked     = false;   // Request Access has been pressed at least once
@@ -100,34 +110,130 @@ let asked     = false;   // Request Access has been pressed at least once
 // find out whether they fixed it is the other failure, and the more
 // annoying one.
 
+// ---- cooldown after a refused attempt ----
+//
+// `refused` already holds the button down until something on the
+// form changes, which covers an honest mistake. This covers the
+// other case: editing one character back and forth to fire the
+// duplicate checks and auth.signUp over and over. Each refusal
+// in a row waits longer, up to half a minute.
+//
+// Like the limiter in config.js, this is a courtesy — it lives
+// in the browser and can be skipped. Supabase Auth's own rate
+// limits are the ones that count.
+let attempts  = 0;
+let coolUntil = 0;
+let coolTimer = null;
+
+function coolingDown() {
+  return Date.now() < coolUntil;
+}
+
+function startCooldown() {
+  attempts += 1;
+  coolUntil = Date.now() + Math.min(30000, 2000 * attempts);
+  clearInterval(coolTimer);
+  // Ticks so the countdown is live, and stops itself once the
+  // wait is over — the button comes back without the person
+  // having to touch anything.
+  coolTimer = setInterval(() => {
+    if (!coolingDown()) clearInterval(coolTimer);
+    refresh();
+  }, 500);
+}
+
+// ---- what's blocking, without saying so out loud ----
+
+function acctInputs() {
+  return Array.from(acctListEl.querySelectorAll("input"));
+}
+
+function requiredFilled() {
+  return Boolean(
+    firstInput.value.trim() &&
+    lastInput.value.trim() &&
+    emailInput.value.trim() &&
+    passInput.value &&
+    confirmInput.value
+  );
+}
+
+// Every box that is stopping the form, collected in one pass.
+//
+// Short account numbers are deliberately NOT in `bad`: they don't
+// hold the button down, because the number is only judged when
+// Request Access is pressed. The press is what turns a number in
+// progress into a wrong one.
+function problems() {
+  const bad = new Set();
+  const short = new Set();
+  let domainBad = false;
+
+  [firstInput, lastInput, emailInput, passInput, confirmInput]
+    .forEach(el => { if (!el.value.trim()) bad.add(el); });
+
+  const email = emailInput.value.trim();
+  if (email && !EMAIL_RE.test(email)) {
+    bad.add(emailInput);
+  } else if (UP_MAIL_RESTRICTION_ENABLED && email && !UP_MAIL_RE.test(email)) {
+    bad.add(emailInput);
+    domainBad = true;
+  }
+  if (passInput.value && !passwordLongEnough(passInput.value)) bad.add(passInput);
+  if (confirmInput.value && confirmInput.value !== passInput.value) bad.add(confirmInput);
+
+  const seen = new Set();
+  acctInputs().forEach(input => {
+    const value = input.value.trim();
+    if (!value) return;
+    const check = validateAccountNumber(value, { required: true });
+    if (!check.ok) { short.add(input); return; }
+    if (seen.has(check.value)) { bad.add(input); return; }
+    seen.add(check.value);
+  });
+
+  return { bad, short, domainBad };
+}
+
+function paint(bad, short) {
+  const all = [firstInput, lastInput, emailInput, passInput, confirmInput, ...acctInputs()];
+  all.forEach(el => {
+    const flagged = asked && (bad.has(el) || short.has(el));
+    el.classList.toggle("is-invalid", flagged);
+  });
+}
+
 function refresh() {
   const { bad, short, domainBad } = problems();
   const complete = requiredFilled();
-  const blocked  = bad.size > 0 || short.size > 0 || refused;
+  const blocked  = bad.size > 0 || short.size > 0 || nameClash || acctClash || refused;
 
   // RA 10173 s.16 -- the notice has to be shown before the data is
   // collected, not after. That still holds: nothing is sent until the
   // box is ticked. It is enforced at the press now rather than by a
   // dead button, which is the same guarantee with a reason attached.
   const acknowledged = !privacyAck || privacyAck.checked;
+  const cooling = coolingDown();
 
   paint(bad, short);
 
-  // The button stays pressable, full stop. A disabled button is the
-  // worst way to report a problem: it withholds the action and the
-  // reason at the same time, so someone staring at a greyed-out
-  // Request Access has nothing to read and nothing to try. Let them
-  // press it, then say what is wrong.
+  // The button stays pressable while the form is wrong. A disabled
+  // button is the worst way to report a problem: it withholds the
+  // action and the reason at the same time, so someone staring at a
+  // greyed-out Request Access has nothing to read and nothing to try.
+  // Let them press it, then say what is wrong.
   //
-  // The single remaining exception is a request already in flight,
-  // which is not a judgement about the form — pressing again would
-  // just start a second signUp for the same person. The cooldown that
-  // used to hold the button down after repeated refusals is gone with
-  // the duplicate checks that drove it; Supabase Auth's own rate
-  // limits were always the ones that counted.
-  submitBtn.disabled = sending;
+  // Only states where pressing genuinely cannot achieve anything
+  // disable it: a request already in flight, or a cooldown after
+  // repeated failures.
+  submitBtn.disabled = sending || cooling;
 
   if (sending) { gateEl.textContent = ""; return; }
+
+  if (cooling) {
+    gateEl.textContent = `Please wait ${Math.ceil((coolUntil - Date.now()) / 1000)}s before trying again.`;
+    return;
+  }
 
   // Before the first press the form says nothing about itself beyond
   // a neutral prompt, and shows no red.
@@ -137,7 +243,7 @@ function refresh() {
     return;
   }
 
-  gateEl.textContent = "";
+  gateEl.textContent = checking ? "Checking\u2026" : "";
 
   // Specific complaints outrank the catch-all, so someone is told
   // which rule they missed rather than just that something is wrong.
@@ -145,19 +251,57 @@ function refresh() {
   if (domainBad)              { showStatus(UP_MAIL_MSG, "error"); return; }
   if (!acknowledged)          { showStatus("Please read the Privacy Notice and Terms of Use, then tick the box to continue.", "error"); return; }
   if (!complete)              { showStatus("Fill in every required field to continue.", "error"); return; }
+  if (checking)               { clearStatus(); return; }
 
   if (blocked) showStatus(DENIED, "error");
   else clearStatus();
 }
 
+// ---- duplicate checks ----
+//
+// Both go through SECURITY DEFINER functions that answer yes or
+// no and never say whose row matched. A check that can't be run
+// is treated as "can't tell": the database still refuses on
+// submit, so a network hiccup shouldn't lock anyone out here.
+
+// A slow answer to an old question must not unlock the button
+// for a newer one, so each round carries a number and only the
+// latest is allowed to settle anything.
+let round = 0;
+
+const runChecks = debounce(async () => {
+  const mine  = ++round;
+  const name  = nameBuilder.value();
+  const accts = acctList.validate();
+
+  try {
+    const [takenName, clashes] = await Promise.all([
+      name ? fullNameTaken(name) : Promise.resolve(false),
+      accts.ok && accts.value ? accountNumbersTaken(accts.value) : Promise.resolve([]),
+    ]);
+    if (mine !== round) return;
+    nameClash = takenName === true;
+    acctClash = clashes.length > 0;
+  } finally {
+    if (mine === round) {
+      checking = false;
+      refresh();
+    }
+  }
+}, 450);
+
 function nameChanged() {
   refused = false;
+  checking = true;
   refresh();
+  runChecks();
 }
 
 function accountsChanged() {
   refused = false;
+  checking = true;
   refresh();
+  runChecks();
 }
 
 function detailsChanged() {
@@ -213,7 +357,7 @@ form.addEventListener("submit", async (e) => {
   const acknowledged = !privacyAck || privacyAck.checked;
 
   if (!accts.ok || bad.size > 0 || short.size > 0 || domainBad ||
-      !acknowledged || !requiredFilled()) {
+      !acknowledged || !requiredFilled() || nameClash || acctClash) {
     refresh();
     // Send focus to the first box at fault. Being told the form is
     // wrong is not much use on a long page if finding the box is the
@@ -225,23 +369,34 @@ form.addEventListener("submit", async (e) => {
     return;
   }
 
+  // A duplicate check may still be in flight from the last keystroke.
+  // Waiting is better than refusing: the final check below is
+  // authoritative anyway, and refusing here would mean a fast typist
+  // gets turned away for being fast.
+  if (checking) {
+    refresh();
+    return;
+  }
+
   sending = true;
   submitBtn.disabled = true;
   submitBtn.textContent = "Requesting\u2026";
   clearStatus();
 
   try {
-    // No duplicate check here any more. A name or account number
-    // already on file is no longer a reason to refuse a registration:
-    // it is sent through, and the administrator decides at approval
-    // time with the clash marked on the card in the queue (see
-    // dupBadge() in approval.js).
-    //
-    // That is a deliberate move of the decision, not a removal of it.
-    // The old refusal could not explain itself without telling a
-    // stranger who was already registered, so it said nothing useful —
-    // and it turned away the case it was worst at judging, a real
-    // person whose name genuinely matches someone else's.
+    // Last look before the account is made — the form can sit
+    // open long enough for someone else to take the name. The
+    // cache in config.js would answer from up to thirty seconds
+    // ago, which is exactly the window that matters here.
+    forgetDuplicateChecks();
+    const [takenName, clashes] = await Promise.all([
+      fullNameTaken(fullName),
+      accts.value ? accountNumbersTaken(accts.value) : Promise.resolve([]),
+    ]);
+    nameClash = takenName === true;
+    acctClash = clashes.length > 0;
+    if (nameClash || acctClash) throw new Error("blocked");
+
     const { data, error } = await supabaseClient.auth.signUp({
       email,
       password,
@@ -310,6 +465,7 @@ form.addEventListener("submit", async (e) => {
     // this. The page doesn't.
     console.error("Registration failed:", err);
     refused = true;
+    startCooldown();
     showStatus(DENIED, "error", true);
   } finally {
     sending = false;

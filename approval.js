@@ -87,134 +87,6 @@ async function cancelMyProfileChange() {
   if (error) throw error;
 }
 
-// ---------- duplicate detection ----------
-//
-// Both write paths already refuse an EXACT clash. enforce_profile_uniqueness()
-// blocks a registration whose name matches another profile, or whose account
-// number is already in profile_accounts; reject_duplicate_change_request()
-// blocks the same for a change request, against profiles AND against other
-// pending requests. An exact duplicate therefore never reaches these queues,
-// and a warning that compared strings directly would be decoration: it could
-// not fire.
-//
-// What those guards do not catch is the same person written two ways.
-// "ABRAJANO, JOHN-ZEL Y." and "ABRAJANO, JOHN ZEL Y." are different strings
-// to Postgres and both insert cleanly; so do "D.C." and "DC". That is the
-// case an administrator reading the queue actually needs flagged, precisely
-// because it is the one the database has already decided is acceptable.
-//
-// So this comparison is deliberately looser than the database's: punctuation
-// and spacing are stripped from names, and account numbers reduced to digits.
-// It will occasionally flag two genuinely different people who normalise
-// alike. That is the right way round — this marks a row for a second look,
-// it does not block anything.
-
-function dupNameKey(value) {
-  return String(value == null ? "" : value).toUpperCase().replace(/[^A-Z0-9]/g, "");
-}
-
-// One key per account number: a profile can hold up to three.
-function dupAcctKeys(value) {
-  return String(value == null ? "" : value)
-    .split(/[,;]+/)
-    .map(part => part.replace(/\D/g, ""))
-    .filter(Boolean);
-}
-
-// Every profile the signed-in administrator can see, which under the
-// profiles_select_own policy is all of them. Read straight from the table
-// rather than through admin_search_users(), which caps at 50 rows — a cap
-// that costs nothing today and silently stops catching duplicates on the
-// 51st account without ever reporting that it has.
-async function loadDuplicateIndex() {
-  const { data, error } = await supabaseClient
-    .from("profiles")
-    .select("email, full_name, account_number, approval_status");
-
-  if (error) {
-    // Non-fatal on purpose. A queue that renders without warnings is worse
-    // than one with them, but far better than one that does not render.
-    console.warn("Couldn't load profiles for duplicate checking:", error);
-    return null;
-  }
-
-  const byName = new Map();
-  const byAcct = new Map();
-
-  (data || []).forEach(row => {
-    // The status travels with the address because the two clashes mean
-    // different things. A clash with an APPROVED profile is the one that
-    // matters: transactions_select_own hands out a transaction to any
-    // approved profile listing that acct_no, so approving a second one
-    // would show two people each other's payment history. A clash with
-    // another PENDING applicant is worth seeing but blocks nothing —
-    // reject one and the other becomes approvable.
-    const holder = {
-      email: String(row.email || "").toLowerCase(),
-      status: row.approval_status || "pending",
-    };
-
-    const nameKey = dupNameKey(row.full_name);
-    if (nameKey) {
-      if (!byName.has(nameKey)) byName.set(nameKey, []);
-      byName.get(nameKey).push(holder);
-    }
-
-    dupAcctKeys(row.account_number).forEach(key => {
-      if (!byAcct.has(key)) byAcct.set(key, []);
-      byAcct.get(key).push(holder);
-    });
-  });
-
-  return { byName, byAcct };
-}
-
-// The addresses sharing this value, excluding the person it belongs to.
-// selfEmail is what stops a pending registration matching its own row —
-// every pending registration IS a profiles row, so without it every one
-// of them would flag itself.
-function dupHoldersForName(index, fullName, selfEmail) {
-  if (!index) return [];
-  const key = dupNameKey(fullName);
-  if (!key) return [];
-  const me = String(selfEmail || "").toLowerCase();
-  return (index.byName.get(key) || []).filter(h => h.email !== me);
-}
-
-function dupHoldersForAccount(index, accountNumber, selfEmail) {
-  if (!index) return [];
-  const me = String(selfEmail || "").toLowerCase();
-  const seen = new Map();
-  dupAcctKeys(accountNumber).forEach(key => {
-    (index.byAcct.get(key) || []).forEach(h => {
-      if (h.email !== me) seen.set(h.email, h);
-    });
-  });
-  return [...seen.values()];
-}
-
-// Only an approved holder blocks an approval. See the note in
-// loadDuplicateIndex() for why the distinction is the whole point.
-function dupBlockers(holders) {
-  return holders.filter(h => h.status === "approved");
-}
-
-// The addresses go in the title attribute rather than on screen: the queue
-// is a scanning surface, and three of them inline push the buttons off the
-// bottom of the card.
-function dupBadge(holders) {
-  if (!holders.length) return "";
-  const blocking = dupBlockers(holders).length > 0;
-  const label = blocking ? "Duplicate" : "Also pending";
-  const cls = blocking ? "dup-warn" : "dup-warn is-advisory";
-  const title = holders
-    .map(h => h.email + (h.status === "approved" ? " (approved)" : " (" + h.status + ")"))
-    .join(", ");
-  return '<span class="' + cls + '" title="Also on: ' +
-         escapeApprovalHtml(title) + '">' +
-         escapeApprovalHtml(label) + "</span>";
-}
-
 // ---------- administrator ----------
 
 async function loadAdminQueue() {
@@ -397,44 +269,6 @@ function injectApprovalStyles() {
   .req-diff .v { flex: 1; word-break: break-word; }
   .req-diff .was { color: var(--muted, #64748b); text-decoration: line-through; }
   .req-diff .now { color: var(--maroon, #7b1113); font-weight: 600; }
-
-  /* "No modification." — the value is unchanged, so there is nothing to
-     compare, and an arrow between two identical strings reads as though
-     something happened. Muted and italic so the eye skips it and lands on
-     the row that did change. */
-  .req-diff .same {
-    color: var(--muted, #64748b); font-style: italic; font-weight: 400;
-  }
-
-  /* Duplicate warning. Sits on the value it is about, not on the card,
-     because a card-level banner cannot say WHICH field clashed — and
-     approving on the strength of a matching account number when it was
-     actually the name is the mistake this exists to prevent. */
-  .dup-warn {
-    display: inline-flex; align-items: center; gap: 4px;
-    margin-left: 6px; padding: 1px 6px 1px 5px;
-    border-radius: 999px; vertical-align: baseline;
-    background: #fef3c7; border: 1px solid #f59e0b;
-    color: #92400e; font: 700 10.5px/1.5 "Inter", sans-serif;
-    text-transform: uppercase; letter-spacing: 0.4px;
-    cursor: help; white-space: nowrap;
-  }
-  .dup-warn::before { content: "⚠"; font-size: 11px; line-height: 1; }
-  .req-diff .v.is-dup, .req-who.is-dup { color: #92400e; }
-
-  /* Advisory: the clash is with another applicant who is also waiting,
-     so nothing is blocked yet. Cooler colour so it does not read as the
-     same instruction as the amber one. */
-  .dup-warn.is-advisory {
-    background: #E6F1FB; border-color: #378ADD; color: #185FA5;
-  }
-
-  .req-block {
-    margin: 9px 0 0; padding: 8px 10px; border-radius: 8px;
-    background: #fef3c7; border: 1px solid #f59e0b;
-    color: #92400e; font-size: 12px; line-height: 1.45;
-  }
-  .req-actions button[disabled] { opacity: .45; cursor: not-allowed; }
   .req-actions { display: flex; gap: 8px; margin-top: 11px; }
   .req-actions button {
     flex: 1; padding: 8px 10px; border-radius: 8px;
@@ -984,12 +818,6 @@ async function mountAdminQueues(opts) {
   // for and a round trip per keystroke would buy nothing.
   let allRegs = [];
 
-  // Rebuilt on every queue load, not cached across them: approving a
-  // registration changes what counts as a duplicate for everyone still
-  // in the queue, and a stale index would keep warning about a clash
-  // that has just been resolved.
-  let dupIndex = null;
-
   // Digits-only comparison for account numbers, so a query matches
   // however either side is punctuated: "3072100742", "3072-1007-42"
   // and a half-typed "3072-1007" all find the same row. The same trick
@@ -1008,45 +836,15 @@ async function mountAdminQueues(opts) {
   }
 
   function registrationCard(r) {
-    const nameDup = dupHoldersForName(dupIndex, r.full_name, r.email);
-    const acctDup = dupHoldersForAccount(dupIndex, r.account_number, r.email);
-
-    // Approval is refused while either value is already held by an
-    // APPROVED profile. This is not a style choice — approving the
-    // second one is what actually causes the harm: transactions_select_own
-    // grants a transaction to every approved profile carrying that
-    // acct_no, so two approved holders read each other's payment history
-    // in soa.html and in their RA 10173 export.
-    //
-    // Reject stays live, because rejecting is the whole point of showing
-    // the card. A rejected profile keeps its row but stops being
-    // approved, so rejecting one of two clashing applicants clears the
-    // block on the other at the next reload.
-    //
-    // The database enforces this too — enforce_profile_uniqueness()
-    // re-checks on the update to 'approved'. This button is the polite
-    // half; the trigger is the half that holds if this script does not
-    // run.
-    const nameBlockers = dupBlockers(nameDup);
-    const acctBlockers = dupBlockers(acctDup);
-    const blocked = nameBlockers.length > 0 || acctBlockers.length > 0;
-
-    const why = blocked
-      ? (nameBlockers.length && acctBlockers.length ? "name and account number are"
-        : nameBlockers.length ? "name is"
-        : "account number is")
-      : "";
-
     return `
       <div class="req-card" data-kind="registration" data-email="${escapeApprovalHtml(r.email)}">
-        <div class="req-who${nameDup.length ? " is-dup" : ""}">${escapeApprovalHtml(r.full_name || "(no name given)")}${dupBadge(nameDup)}</div>
+        <div class="req-who">${escapeApprovalHtml(r.full_name || "(no name given)")}</div>
         <div class="req-meta">${escapeApprovalHtml(r.email)} · applied ${escapeApprovalHtml(formatApprovalStamp(r.submitted_at))}</div>
         <div class="req-diff">
-          <div><span class="k">Account no.</span><span class="v${acctDup.length ? " is-dup" : ""}">${escapeApprovalHtml(r.account_number || "— not provided —")}${dupBadge(acctDup)}</span></div>
+          <div><span class="k">Account no.</span><span class="v">${escapeApprovalHtml(r.account_number || "— not provided —")}</span></div>
         </div>
-        ${blocked ? `<div class="req-block">This ${why} already held by an approved account, so this registration can't be approved. Reject it, or free the value on the other account first.</div>` : ""}
         <div class="req-actions">
-          <button type="button" class="btn-approve" data-act="approve"${blocked ? ' disabled data-blocked="1" title="Blocked by a duplicate held by an approved account"' : ""}>Approve access</button>
+          <button type="button" class="btn-approve" data-act="approve">Approve access</button>
           <button type="button" class="btn-reject" data-act="reject">Reject</button>
         </div>
       </div>`;
@@ -1215,14 +1013,6 @@ async function mountAdminQueues(opts) {
       return;
     }
 
-    // In parallel with nothing — the queue is already in hand — but before
-    // either panel paints, because both card renderers read dupIndex
-    // synchronously and a null one silently renders every card unflagged.
-    // loadDuplicateIndex() resolves to null rather than throwing if the
-    // read fails, so a permissions or network problem here costs the
-    // warnings and not the queue.
-    dupIndex = await loadDuplicateIndex();
-
     const regs = queue.registrations;
     const changes = queue.profileChanges;
 
@@ -1240,33 +1030,6 @@ async function mountAdminQueues(opts) {
       paintRegistrations();
     }
 
-  // A request carries BOTH fields whether or not both changed — the form
-  // submits the whole profile — so an unchanged field arrived here as
-  // "X → X". Rendering that as a diff invites the reader to look for a
-  // difference that is not there, and on a card where the OTHER field did
-  // change it actively competes with the one that matters.
-  //
-  // Compared on the normalised value, not the raw string, so a name that
-  // differs only by trailing whitespace or double-spacing still reads as
-  // unchanged. Anything that survives normalisation is shown as a diff of
-  // the raw values, because at that point the punctuation IS the change.
-  function changeValue(before, after, dupHolders) {
-    const from = before == null ? "" : String(before);
-    const to   = after  == null ? "" : String(after);
-
-    const unchanged = from.trim().replace(/\s+/g, " ") === to.trim().replace(/\s+/g, " ");
-
-    if (unchanged) {
-      return '<span class="v"><span class="same">No modification.</span></span>';
-    }
-
-    return `<span class="v${dupHolders.length ? " is-dup" : ""}">
-      <span class="was">${escapeApprovalHtml(from || "—")}</span>
-      <span class="arrow">→</span>
-      <span class="now">${escapeApprovalHtml(to || "—")}</span>${dupBadge(dupHolders)}
-    </span>`;
-  }
-
     if (changesEl) {
       changesEl.innerHTML = changes.length
         ? changes.map(c => `
@@ -1276,13 +1039,19 @@ async function mountAdminQueues(opts) {
               <div class="req-diff">
                 <div>
                   <span class="k">Full name</span>
-                  ${changeValue(c.current_full_name, c.requested_full_name,
-                                dupHoldersForName(dupIndex, c.requested_full_name, c.user_email))}
+                  <span class="v">
+                    <span class="was">${escapeApprovalHtml(c.current_full_name || "—")}</span>
+                    <span class="arrow">→</span>
+                    <span class="now">${escapeApprovalHtml(c.requested_full_name || "—")}</span>
+                  </span>
                 </div>
                 <div>
                   <span class="k">Account no.</span>
-                  ${changeValue(c.current_account_number, c.requested_account_number,
-                                dupHoldersForAccount(dupIndex, c.requested_account_number, c.user_email))}
+                  <span class="v">
+                    <span class="was">${escapeApprovalHtml(c.current_account_number || "—")}</span>
+                    <span class="arrow">→</span>
+                    <span class="now">${escapeApprovalHtml(c.requested_account_number || "—")}</span>
+                  </span>
                 </div>
               </div>
               <div class="req-actions">
@@ -1363,13 +1132,7 @@ async function mountAdminQueues(opts) {
           } catch (err) {
             console.error("Approval action failed:", err);
             say(host, err.message || "That didn't go through. Try again.", false);
-            // Not a blanket re-enable: a button disabled because of a
-            // duplicate was never eligible, and a failed reject would
-            // otherwise hand back a live Approve on exactly the card
-            // that must not have one.
-            buttons.forEach(b => {
-              if (b.getAttribute("data-blocked") !== "1") b.disabled = false;
-            });
+            buttons.forEach(b => (b.disabled = false));
           }
         });
       });

@@ -6,6 +6,7 @@
 # NOT from git history — add it here before the first `git add`.
 deploy-schema.sql
 sync-csp.js
+sync-vendor.js
 email-*.html
 README.md
 LEGAL-COMPLIANCE.md
@@ -13,3 +14,45 @@ DEPLOY.txt
 .DS_Store
 Thumbs.db
 node_modules/
+
+# ---- current build note (2026-08-07) ----
+#
+# This snapshot is the CDN build: the pages load supabase-js and xlsx
+# from cdn.jsdelivr.net / cdn.sheetjs.com at pinned versions, and
+# script-src names those two origins. So vendor/ and vendor-lock.json
+# do not exist here and there is nothing for the section below to
+# track — it is kept because it becomes true again the moment
+# sync-vendor.js is run and the self-hosted pages are adopted.
+
+# ---- what is deliberately NOT ignored ----
+#
+# vendor/ and vendor-lock.json are TRACKED, on purpose.
+#
+# vendor/ holds supabase-js and xlsx, served from this origin so
+# script-src can stay 'self' alone. Ignoring them would mean the
+# deployed site is missing the two files every page depends on, and the
+# symptom is a portal that renders and then does nothing at all.
+#
+# vendor-lock.json is the record of which bytes were vetted. Committing
+# the libraries without it leaves nothing to check them against, which
+# is most of the point — see sync-vendor.js.
+
+# ---- not in this repo, and needs to be ----
+#
+# Three Supabase Edge Functions are invoked by name from the client and
+# have no source here:
+#
+#   notify-approval    approval.js  — approval/rejection emails
+#   admin-delete-user  approval.js  — wraps admin_delete_user_data()
+#                                     plus the Auth Admin API, neither
+#                                     of which belongs in the browser
+#   ai-assistant       page-dashboard.js — presumably the only caller
+#                                     of ai_assistant_take_token()
+#
+# They are not ignored; they were never added. A deploy from this repo
+# alone produces a portal where approval emails silently fail, deleting
+# a user throws, and the assistant is dead — three separate faults that
+# do not look related and none of which point here.
+#
+# They live in supabase/functions/<name>/index.ts. Add them, or write
+# down where they are kept instead.
