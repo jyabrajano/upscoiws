@@ -568,18 +568,15 @@
     margin-bottom: 4px;
   }
 
-  /* max-height as well as max-width. Without it a tall image renders at
-     its natural height and pushes the rest of the dashboard off the
-     screen -- a portrait logo can be several times the card's height.
-     object-fit: contain keeps the whole image visible rather than
-     cropping it to fit. */
+  /* No max-height: the image fills the card's width and keeps its own
+     aspect ratio, so a tall image is tall. That is deliberate -- an
+     announcement poster is meant to be read, not thumbnailed. If a
+     portrait image ever pushes too much of the dashboard down, add
+     `max-height` here rather than resizing the source. */
   .news-item img {
     display: block;
     max-width: 100%;
-    max-height: 220px;
-    width: auto;
     height: auto;
-    object-fit: contain;
     margin-top: 8px;
     border-radius: var(--radius-xs);
     border: 1px solid var(--card-border);
