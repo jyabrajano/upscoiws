@@ -104,11 +104,18 @@ async function loadTransactions(fromISO, toISO) {
   const from = fromISO || "";
   const to = toISO || "";
 
-  // ATM transactions: every account the person holds, off
-  // public.transactions. CHECK transactions: a different table
-  // entirely — public.released_transactions, scoped by the person's
-  // email (user_email) rather than an account number. The two are
-  // independent queries, so a problem with one doesn't block the other.
+  // ATM transactions: off public.transactions, and now scoped by BOTH
+  // proofs the policy requires — the account number has to be one the
+  // person registered and an administrator approved, AND their address
+  // has to be named on the row. CHECK transactions: a different table
+  // entirely — public.released_transactions, scoped by email alone. The
+  // two are independent queries, so a problem with one doesn't block
+  // the other.
+  //
+  // The two conditions here must stay in step with
+  // transactions_select_own. If they drift, RLS still refuses the extra
+  // rows — but the person is shown a truncation notice for rows that
+  // were never theirs, which reads as data loss.
   //
   // Each is bounded on its OWN date column: ATM filters on txn_date,
   // CHECK on dreleased. That is the same mapping DATE_FIELD holds for
@@ -119,8 +126,13 @@ async function loadTransactions(fromISO, toISO) {
   if (myAccountNumbers.length) {
     atmQuery = supabaseClient
       .from("transactions")
-      .select("txn_date, dvno, ada, description, amount, acct_no")
-      .in("acct_no", myAccountNumbers);
+      .select("txn_date, dvno, ada, description, amount, acct_no, email")
+      .in("acct_no", myAccountNumbers)
+      // Loose on purpose, exactly like the CHECK query below: `email`
+      // carries a comma-separated list on some rows, so a whole-value
+      // match would miss people genuinely named on them. parseEmails()
+      // makes the real membership decision once the rows are back.
+      .ilike("email", `%${myEmail}%`);
     if (from) atmQuery = atmQuery.gte(DATE_FIELD.ATM, from);
     if (to) atmQuery = atmQuery.lte(DATE_FIELD.ATM, to);
     atmQuery = atmQuery.order("txn_date", { ascending: false }).limit(TXN_FETCH_LIMIT);
@@ -157,7 +169,12 @@ async function loadTransactions(fromISO, toISO) {
   if (atmResult.error) console.error("Couldn't load ATM transactions:", atmResult.error);
   if (checkResult.error) console.error("Couldn't load CHECK transactions:", checkResult.error);
 
-  allTxns = atmResult.data || [];
+  // Same exact-membership filter the CHECK tab applies, for the same
+  // reason: the ilike above is a substring test, so "jy@up.edu.ph"
+  // would otherwise match a row naming "notjy@up.edu.ph".
+  allTxns = (atmResult.data || []).filter(
+    r => parseEmails(r.email).includes(myEmail)
+  );
   checkTxns = (checkResult.data || []).filter(
     r => parseEmails(r.user_email).includes(myEmail)
   );
