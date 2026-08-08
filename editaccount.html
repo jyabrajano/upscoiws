@@ -270,6 +270,20 @@
 
   .field input::placeholder { color: #94a3b8; }
 
+  /* Locked / Read-only styling for Full Name */
+  #fullName {
+    text-transform: uppercase;
+    background-color: #f1f5f9;
+    color: var(--muted);
+    border-color: #cbd5e1;
+    cursor: not-allowed;
+  }
+
+  #fullName:focus {
+    border-color: #cbd5e1;
+    box-shadow: none;
+  }
+
   button.primary {
     width: 100%;
     background: linear-gradient(135deg, var(--maroon) 0%, var(--maroon-dark) 100%);
@@ -404,6 +418,8 @@
     letter-spacing: 0.6px;
     margin-left: 4px;
   }
+
+  .reset-panel.open { display: block; }
 
   .footer-note {
     text-align: center;
