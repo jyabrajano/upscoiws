@@ -64,7 +64,7 @@
   script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
-  img-src 'self' data:;
+  img-src 'self' data: https://xgcdbtahappoqegheitd.supabase.co;
   connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co;
   object-src 'none';
   base-uri 'self';
@@ -522,6 +522,121 @@
   .event-del-btn:hover { text-decoration: underline; }
   .event-del-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+  /* Image picker. The native file input is hidden and driven by its
+     <label>, because the browser's default control cannot be styled and
+     prints its own filename text. */
+  .news-image-row { display: flex; align-items: center; gap: 8px; }
+  .news-image-row input[type="file"] {
+    position: absolute; width: 1px; height: 1px;
+    opacity: 0; pointer-events: none;
+  }
+  .news-image-pick {
+    background: var(--surface); color: var(--muted);
+    border-radius: var(--radius-xs); padding: 6px 12px;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s var(--ease), color 0.15s var(--ease);
+  }
+  .news-image-pick:hover { background: var(--maroon-soft); color: var(--maroon); }
+  .news-image-row input[type="file"]:focus-visible + .news-image-name,
+  .news-image-row input[type="file"]:focus + .news-image-name { outline: 2px solid var(--maroon); }
+  .news-image-name {
+    flex: 1; min-width: 0; font-size: 12px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .news-image-clear {
+    border: none; background: none; cursor: pointer;
+    font-size: 12px; font-weight: 600; font-family: inherit;
+    color: var(--muted); padding: 4px 6px; border-radius: var(--radius-xs);
+  }
+  .news-image-clear:hover { background: var(--maroon-soft); color: var(--maroon); }
+  .news-image-preview {
+    max-width: 100%; max-height: 160px; width: auto;
+    border-radius: var(--radius-xs); border: 1px solid var(--card-border);
+    object-fit: contain; align-self: flex-start;
+  }
+
+  /* Image on a published item, public list and admin list. */
+  .news-item img {
+    display: block; max-width: 100%; height: auto;
+    margin-top: 8px; border-radius: var(--radius-xs);
+    border: 1px solid var(--card-border);
+  }
+  .news-admin-thumb {
+    width: 44px; height: 44px; flex-shrink: 0;
+    object-fit: cover; border-radius: var(--radius-xs);
+    border: 1px solid var(--card-border);
+  }
+
+  /* Post News — reuses the .add-event-form vocabulary so the two
+     admin composers on this page look like one thing. */
+  .news-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+
+  .news-form input,
+  .news-form textarea {
+    width: 100%;
+    border: 1.5px solid #e2e8f0;
+    border-radius: var(--radius-xs);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--ink);
+    background: var(--white);
+  }
+  .news-form textarea { resize: vertical; min-height: 68px; line-height: 1.5; }
+  .news-form input:focus,
+  .news-form textarea:focus {
+    outline: none;
+    border-color: var(--maroon);
+    box-shadow: 0 0 0 3px var(--maroon-soft);
+  }
+
+  .news-form-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .news-count { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .news-count.over { color: var(--maroon); font-weight: 600; }
+  .news-actions { display: flex; gap: 8px; }
+
+  .news-save, .news-cancel {
+    border: none;
+    border-radius: var(--radius-xs);
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s var(--ease), opacity 0.15s var(--ease);
+  }
+  .news-save { background: var(--maroon); color: var(--white); box-shadow: var(--shadow-btn); }
+  .news-save:hover:not(:disabled) { background: var(--maroon-dark); }
+  .news-save:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+  .news-cancel { background: var(--surface); color: var(--muted); }
+  .news-cancel:hover { background: var(--maroon-soft); color: var(--maroon); }
+
+  .news-note { margin: 2px 0 0; font-size: 12px; min-height: 16px; color: var(--muted); }
+  .news-note.error { color: var(--maroon); }
+  .news-note.ok { color: var(--credit, #166534); }
+
+  .news-admin-list { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .news-admin-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px; border: 1px solid var(--card-border);
+    border-radius: var(--radius-xs); background: var(--surface);
+  }
+  .news-admin-item.editing { border-color: var(--maroon); background: var(--maroon-soft); }
+  .news-admin-text { flex: 1; min-width: 0; }
+  .news-admin-text strong { display: block; font-size: 13px; margin-bottom: 2px; }
+  .news-admin-text span {
+    display: block; font-size: 12px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .news-admin-date { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .news-admin-btns { display: flex; gap: 6px; flex-shrink: 0; }
+  .news-admin-btns button {
+    border: none; background: none; cursor: pointer;
+    font-size: 12px; font-weight: 600; font-family: inherit;
+    padding: 4px 6px; border-radius: var(--radius-xs); color: var(--muted);
+  }
+  .news-admin-btns button:hover { background: var(--white); color: var(--maroon); }
+
   .add-event-form {
     display: flex;
     gap: 8px;
@@ -963,7 +1078,7 @@
   @media print {
     @page { size: auto; margin: 12mm 10mm; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    nav, .ai-launcher, .ai-widget, .profile-menu, .cal-header button, .add-event-form, .event-del-btn, #adminSection {
+    nav, .ai-launcher, .ai-widget, .profile-menu, .cal-header button, .add-event-form, .news-form, .news-admin-list, .event-del-btn, #adminSection {
       display: none !important;
     }
     html, body {
@@ -1072,6 +1187,48 @@
       <div class="card admin-card">
         <h2 class="section-title">Administrators</h2>
         <div id="adminManager"></div>
+      </div>
+
+      <!--
+        Post News. A direct child of #adminSection for the same reason
+        the available-checks card is: #adminSection is `display: contents`,
+        so its children are the grid items. A wrapper would swallow the
+        column sizing.
+
+        No <form> element and no on*= attributes anywhere in here --
+        script-src carries no 'unsafe-inline', so a handler attribute
+        would simply not run. Listeners are attached in page-dashboard.js.
+      -->
+      <div class="card admin-card" id="newsAdminCard">
+        <h2 class="section-title">Post News</h2>
+
+        <div class="news-form">
+          <input id="newsTitle" type="text" maxlength="120"
+                 placeholder="Headline" autocomplete="off">
+          <textarea id="newsContent" maxlength="2000" rows="3"
+                    placeholder="What do people need to know?"></textarea>
+
+          <div class="news-image-row">
+            <label class="news-image-pick" for="newsImage">Choose image</label>
+            <input id="newsImage" type="file"
+                   accept="image/jpeg,image/png,image/webp,image/gif">
+            <span class="news-image-name" id="newsImageName">No image</span>
+            <button type="button" class="news-image-clear" id="newsImageClear" style="display:none;">Remove</button>
+          </div>
+          <img id="newsImagePreview" class="news-image-preview" alt="" style="display:none;">
+
+          <div class="news-form-row">
+            <span class="news-count" id="newsCount">0 / 2000</span>
+            <div class="news-actions">
+              <button type="button" class="news-cancel" id="newsCancel" style="display:none;">Cancel</button>
+              <button type="button" class="news-save" id="newsSave">Post</button>
+            </div>
+          </div>
+
+          <p class="news-note" id="newsNote" role="status" aria-live="polite"></p>
+        </div>
+
+        <div id="newsAdminList" class="news-admin-list"></div>
       </div>
     </div>
 

@@ -177,20 +177,257 @@
   watchDatasets(["available_transactions"], loadAvailable);
 
   const newsList = document.getElementById("newsList");
-  try {
-    const news = await fetchNews(5);
-    newsList.innerHTML = news.length
-      ? news.map(n => `
-          <div class="news-item">
-            <h3>${escapeHtml(n.title)}</h3>
-            <p>${escapeHtml(n.content)}</p>
-          </div>
-        `).join("")
-      : '<p class="empty">No news to show right now.</p>';
-  } catch (e) {
-    console.error("Failed to load news:", e);
-    newsList.innerHTML = '<p class="empty">Couldn\'t load news right now.</p>';
+
+  // Pulled out of the inline block below so the admin composer can
+  // repaint the public list after posting, editing or deleting --
+  // without the person having to reload to see their own change.
+  async function renderNews() {
+    try {
+      const news = await fetchNews(5);
+
+      // Signed in parallel. Each URL is an independent round trip, so
+      // awaiting them in sequence would add a request's latency per
+      // item with an image.
+      const urls = await Promise.all(news.map(n => newsImageUrl(n.image_path)));
+
+      newsList.innerHTML = news.length
+        ? news.map((n, i) => `
+            <div class="news-item">
+              <h3>${escapeHtml(n.title)}</h3>
+              <p>${escapeHtml(n.content)}</p>
+              ${urls[i] ? `<img src="${escapeHtml(urls[i])}" alt="">` : ""}
+            </div>
+          `).join("")
+        : '<p class="empty">No news to show right now.</p>';
+    } catch (e) {
+      console.error("Failed to load news:", e);
+      newsList.innerHTML = '<p class="empty">Couldn\'t load news right now.</p>';
+    }
   }
+
+  await renderNews();
+
+  // ------------------------------------------------------------
+  // Post News — administrators only.
+  //
+  // Hiding the card for non-admins is a courtesy, not the control:
+  // news_admin_write says is_admin() for both USING and WITH CHECK, so
+  // a non-admin who called addNews() from the console gets a policy
+  // error. The card is hidden because showing a button that always
+  // fails is worse than not showing it.
+  // ------------------------------------------------------------
+  if (isAdmin) {
+    const titleEl   = document.getElementById("newsTitle");
+    const contentEl = document.getElementById("newsContent");
+    const countEl   = document.getElementById("newsCount");
+    const noteEl    = document.getElementById("newsNote");
+    const saveBtn   = document.getElementById("newsSave");
+    const cancelBtn = document.getElementById("newsCancel");
+    const adminList = document.getElementById("newsAdminList");
+
+    const fileEl    = document.getElementById("newsImage");
+    const fileName  = document.getElementById("newsImageName");
+    const clearBtn  = document.getElementById("newsImageClear");
+    const previewEl = document.getElementById("newsImagePreview");
+
+    // null = composing a new item; a uuid = editing that one.
+    let editingId = null;
+    // The path already stored on the item being edited. Kept so an edit
+    // that does not touch the picker leaves the existing image alone.
+    let editingImagePath = null;
+    // Object URL for a freshly picked file, revoked when replaced --
+    // otherwise every pick leaks a blob for the life of the page.
+    let previewUrl = null;
+
+    function setPreview(url) {
+      if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+      if (url) {
+        previewEl.src = url;
+        previewEl.style.display = "";
+        clearBtn.style.display = "";
+      } else {
+        previewEl.removeAttribute("src");
+        previewEl.style.display = "none";
+        clearBtn.style.display = "none";
+      }
+    }
+
+    function say(message, kind) {
+      noteEl.textContent = message || "";
+      noteEl.className = "news-note" + (kind ? " " + kind : "");
+    }
+
+    function updateCount() {
+      const n = contentEl.value.length;
+      countEl.textContent = n + " / 2000";
+      countEl.className = "news-count" + (n > 2000 ? " over" : "");
+    }
+
+    function resetForm() {
+      editingId = null;
+      editingImagePath = null;
+      titleEl.value = "";
+      contentEl.value = "";
+      fileEl.value = "";
+      fileName.textContent = "No image";
+      setPreview(null);
+      saveBtn.textContent = "Post";
+      cancelBtn.style.display = "none";
+      updateCount();
+      renderAdminList();
+    }
+
+    async function beginEdit(item) {
+      editingId = item.id;
+      editingImagePath = item.image_path || null;
+      titleEl.value = item.title || "";
+      contentEl.value = item.content || "";
+      fileEl.value = "";
+
+      if (editingImagePath) {
+        fileName.textContent = "Current image";
+        setPreview(await newsImageUrl(editingImagePath));
+      } else {
+        fileName.textContent = "No image";
+        setPreview(null);
+      }
+
+      saveBtn.textContent = "Save changes";
+      cancelBtn.style.display = "";
+      updateCount();
+      say("Editing an existing item.", null);
+      renderAdminList();
+      titleEl.focus();
+    }
+
+    // Rebuilt from scratch each time rather than patched in place: the
+    // list is at most NEWS_LIMIT rows, and a full repaint cannot drift
+    // out of step with the database the way incremental edits do.
+    async function renderAdminList() {
+      try {
+        const items = await fetchNews(20);
+        if (!items.length) {
+          adminList.innerHTML = '<p class="empty">Nothing posted yet.</p>';
+          return;
+        }
+        const thumbs = await Promise.all(items.map(n => newsImageUrl(n.image_path)));
+        adminList.innerHTML = items.map((n, i) => `
+          <div class="news-admin-item${n.id === editingId ? " editing" : ""}">
+            ${thumbs[i] ? `<img class="news-admin-thumb" src="${escapeHtml(thumbs[i])}" alt="">` : ""}
+            <div class="news-admin-text">
+              <strong>${escapeHtml(n.title)}</strong>
+              <span>${escapeHtml(n.content)}</span>
+            </div>
+            <span class="news-admin-date">${n.created_at ? formatDate(n.created_at) : ""}</span>
+            <div class="news-admin-btns">
+              <button type="button" data-news-edit="${escapeHtml(n.id)}">Edit</button>
+              <button type="button" data-news-del="${escapeHtml(n.id)}">Delete</button>
+            </div>
+          </div>
+        `).join("");
+      } catch (e) {
+        console.error("Failed to load news for admin list:", e);
+        adminList.innerHTML = '<p class="empty">Couldn\'t load the list.</p>';
+      }
+    }
+
+    // One delegated listener rather than one per button: the list is
+    // re-rendered constantly, and per-button handlers would leak with
+    // every repaint.
+    adminList.addEventListener("click", async (ev) => {
+      const editBtn = ev.target.closest("[data-news-edit]");
+      const delBtn  = ev.target.closest("[data-news-del]");
+
+      if (editBtn) {
+        const items = await fetchNews(20);
+        const item = items.find(n => n.id === editBtn.getAttribute("data-news-edit"));
+        if (item) await beginEdit(item);
+        return;
+      }
+
+      if (delBtn) {
+        const id = delBtn.getAttribute("data-news-del");
+        if (!window.confirm("Delete this news item? This cannot be undone.")) return;
+        delBtn.disabled = true;
+        try {
+          const items = await fetchNews(20);
+          const item = items.find(n => n.id === id);
+          await deleteNews(id, item ? item.image_path : null);
+          if (editingId === id) resetForm();
+          say("Deleted.", "ok");
+          await renderAdminList();
+          await renderNews();
+        } catch (e) {
+          console.error("Failed to delete news:", e);
+          say("Couldn't delete that item.", "error");
+          delBtn.disabled = false;
+        }
+      }
+    });
+
+    fileEl.addEventListener("change", () => {
+      const f = fileEl.files && fileEl.files[0];
+      if (!f) { fileName.textContent = editingImagePath ? "Current image" : "No image"; return; }
+      fileName.textContent = f.name;
+      setPreview(URL.createObjectURL(f));
+      previewUrl = previewEl.src;
+      say("", null);
+    });
+
+    // Clears a picked file, and marks an existing image for removal on
+    // save by dropping the remembered path.
+    clearBtn.addEventListener("click", () => {
+      fileEl.value = "";
+      editingImagePath = null;
+      fileName.textContent = "No image";
+      setPreview(null);
+    });
+
+    contentEl.addEventListener("input", updateCount);
+    cancelBtn.addEventListener("click", () => { resetForm(); say("", null); });
+
+    saveBtn.addEventListener("click", async () => {
+      saveBtn.disabled = true;
+      say("Saving…", null);
+      try {
+        const picked = fileEl.files && fileEl.files[0];
+        let imagePath = editingImagePath;
+
+        if (picked) {
+          say("Uploading image…", null);
+          imagePath = await uploadNewsImage(picked);
+        }
+
+        if (editingId) {
+          await updateNews(editingId, titleEl.value, contentEl.value, imagePath);
+          // Only once the row points at the new object. Reversing this
+          // would delete the old image and then, on a failed update,
+          // leave the item pointing at nothing.
+          if (picked && editingImagePath && editingImagePath !== imagePath) {
+            await deleteNewsImage(editingImagePath);
+          }
+          say("Changes saved.", "ok");
+        } else {
+          await addNews(titleEl.value, contentEl.value, imagePath);
+          say("Posted.", "ok");
+        }
+        resetForm();
+        await renderNews();
+      } catch (e) {
+        console.error("Failed to save news:", e);
+        // addNews/updateNews raise plain Error for the validation cases,
+        // so their wording is worth showing. A PostgREST error is not.
+        say(e && e.message && !e.code ? e.message : "Couldn't save that. Try again.", "error");
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    updateCount();
+    await renderAdminList();
+  }
+
+  // eslint-disable-next-line no-constant-condition
 
   // --- INTERACTIVE CALENDAR ENGINE ---
   let currentDisplayDate = new Date();

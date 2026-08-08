@@ -28,6 +28,12 @@
 // The caps below are deliberately generous. They exist so the payload
 // has a ceiling at all, not to ration anything.
 const NEWS_LIMIT = 50;
+
+// Caps for the admin composer. news.title and news.content are unbounded
+// text in the database, so these are the only limit there is -- without
+// them one paste can push every other item off the dashboard.
+const NEWS_TITLE_MAX = 120;
+const NEWS_CONTENT_MAX = 2000;
 const CALENDAR_LIMIT = 500;
 
 // ---------- news ----------
@@ -40,12 +46,146 @@ async function fetchNews(limit) {
 
   const { data, error } = await supabaseClient
     .from("news")
-    .select("id, title, content, created_at")
+    .select("id, title, content, image_path, created_at")
     .order("created_at", { ascending: false })
     .limit(cap);
 
   if (error) throw error;
   return data || [];
+}
+
+// News is written by administrators only. The three functions below all
+// go straight at the table rather than through an RPC, because
+// news_admin_write already says `is_admin()` for USING and WITH CHECK --
+// a wrapper function would be a second copy of that rule to keep in
+// step, which is how the two halves of a check drift apart.
+//
+// A non-admin calling these gets an empty result or a policy error from
+// PostgREST, not a silent success. The form in page-dashboard.js is
+// hidden for non-admins as well, but that is a courtesy: the row-level
+// policy is what actually decides.
+
+// ---------- news images ----------
+
+// The bucket is PRIVATE, so an <img src> pointing straight at it gets a
+// 400. Reads go through a short-lived signed URL instead, which is also
+// what keeps an image behind the same rule as the news item itself: an
+// unapproved user cannot mint one.
+const NEWS_IMAGE_BUCKET = "news-images";
+const NEWS_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const NEWS_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const NEWS_SIGNED_URL_TTL = 3600;
+
+async function uploadNewsImage(file) {
+  if (!file) return null;
+
+  // Checked here as well as on the bucket. The bucket is the control --
+  // this is so someone picking a 40 MB photo is told immediately rather
+  // than after the upload fails.
+  if (!NEWS_IMAGE_TYPES.includes(file.type)) {
+    throw new Error("Images must be JPEG, PNG, WebP or GIF.");
+  }
+  if (file.size > NEWS_IMAGE_MAX_BYTES) {
+    throw new Error("Images must be 2 MB or smaller.");
+  }
+
+  // Random name, not the original. An uploaded filename can carry a
+  // person's name, a path, or characters that need escaping every time
+  // the value is used; none of that is worth keeping for a dashboard card.
+  const ext = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const path = `${crypto.randomUUID()}.${ext || "bin"}`;
+
+  const { error } = await supabaseClient
+    .storage.from(NEWS_IMAGE_BUCKET)
+    .upload(path, file, { cacheControl: "3600", upsert: false });
+
+  if (error) throw error;
+  return path;
+}
+
+async function newsImageUrl(path) {
+  if (!path) return null;
+  const { data, error } = await supabaseClient
+    .storage.from(NEWS_IMAGE_BUCKET)
+    .createSignedUrl(path, NEWS_SIGNED_URL_TTL);
+
+  // A missing image should not blank the announcement it belongs to.
+  if (error) { console.warn("Couldn't sign news image:", error); return null; }
+  return data ? data.signedUrl : null;
+}
+
+async function deleteNewsImage(path) {
+  if (!path) return;
+  const { error } = await supabaseClient
+    .storage.from(NEWS_IMAGE_BUCKET)
+    .remove([path]);
+  // Logged, not thrown: a leftover object is untidy, but failing the
+  // whole delete over it would leave the news item on the dashboard.
+  if (error) console.warn("Couldn't remove news image:", error);
+}
+
+async function addNews(title, content, imagePath) {
+  const cleanTitle = String(title == null ? "" : title).trim();
+  const cleanContent = String(content == null ? "" : content).trim();
+
+  if (!cleanTitle) throw new Error("A headline is required.");
+  if (!cleanContent) throw new Error("Some text is required.");
+  if (cleanTitle.length > NEWS_TITLE_MAX) {
+    throw new Error(`Headline must be ${NEWS_TITLE_MAX} characters or fewer.`);
+  }
+  if (cleanContent.length > NEWS_CONTENT_MAX) {
+    throw new Error(`Text must be ${NEWS_CONTENT_MAX} characters or fewer.`);
+  }
+
+  const { data, error } = await supabaseClient
+    .from("news")
+    .insert({ title: cleanTitle, content: cleanContent, image_path: imagePath || null })
+    .select("id, title, content, image_path, created_at")
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function updateNews(id, title, content, imagePath) {
+  const cleanTitle = String(title == null ? "" : title).trim();
+  const cleanContent = String(content == null ? "" : content).trim();
+
+  if (!cleanTitle) throw new Error("A headline is required.");
+  if (!cleanContent) throw new Error("Some text is required.");
+  if (cleanTitle.length > NEWS_TITLE_MAX) {
+    throw new Error(`Headline must be ${NEWS_TITLE_MAX} characters or fewer.`);
+  }
+  if (cleanContent.length > NEWS_CONTENT_MAX) {
+    throw new Error(`Text must be ${NEWS_CONTENT_MAX} characters or fewer.`);
+  }
+
+  // created_at is deliberately not touched. An edit is a correction to an
+  // existing announcement, not a new one, and rewriting the timestamp
+  // would jump it back to the top of a list ordered by it.
+  const { data, error } = await supabaseClient
+    .from("news")
+    .update({ title: cleanTitle, content: cleanContent, image_path: imagePath || null })
+    .eq("id", id)
+    .select("id, title, content, image_path, created_at")
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function deleteNews(id, imagePath) {
+  const { error } = await supabaseClient
+    .from("news")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+
+  // Row first, object second. If this order were reversed and the row
+  // delete failed, the dashboard would show an announcement whose image
+  // no longer exists. An orphaned object is the cheaper of the two.
+  await deleteNewsImage(imagePath);
 }
 
 // ---------- calendar ----------
