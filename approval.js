@@ -801,6 +801,20 @@ async function mountAdminQueues(opts) {
   const filterNote  = filterEl ? filterEl.querySelector('[data-role="note"]') : null;
   const suggestEl   = filterEl ? filterEl.querySelector('[data-role="suggest"]') : null;
 
+  // Temporary, and safe to delete once the filter is confirmed working.
+  // It exists because "the filter doesn't appear" has three completely
+  // different causes that look identical from the outside: the markup
+  // is missing (old dashboard.html), the option was never passed (old
+  // page-dashboard.js), or the wiring ran fine and the queue is simply
+  // empty. This says which, in one line, without anyone having to
+  // reason about it.
+  console.info(
+    "[approval.js] registration filter —",
+    filterEl ? "container found" : "NO container (old dashboard.html, or filterEl not passed)",
+    "| input:", !!filterInput,
+    "| suggestions:", !!suggestEl
+  );
+
   if (registrationsEl) registrationsEl.innerHTML = '<div class="queue-empty">Loading…</div>';
   if (changesEl) changesEl.innerHTML = '<div class="queue-empty">Loading…</div>';
 
@@ -1616,6 +1630,11 @@ async function mountUserDirectory(container, onChanged) {
       const now = [d.to.full_name, d.to.account_number].filter(Boolean).join(" · ") || "—";
       return `${was} → ${now}`;
     }
+    // sync_email_change() writes from_email/to_email rather than
+    // from/to, because the branch above expects those to be objects
+    // carrying full_name and account_number, and an email change
+    // would render as "— → —".
+    if (d.from_email && d.to_email) return `${d.from_email} → ${d.to_email}`;
     if (d.reason) return `Reason: ${d.reason}`;
     if (d.note) return `Note: ${d.note}`;
     if (entry.account_number) return entry.account_number;
@@ -2068,6 +2087,11 @@ function logEntryDetail(entry) {
     const now = [d.to.full_name, d.to.account_number].filter(Boolean).join(" · ") || "—";
     return `${was} → ${now}`;
   }
+  // sync_email_change() writes from_email/to_email rather than
+  // from/to, because the branch above expects those to be objects
+  // carrying full_name and account_number, and an email change
+  // would render as "— → —".
+  if (d.from_email && d.to_email) return `${d.from_email} → ${d.to_email}`;
   if (d.reason) return `Reason: ${d.reason}`;
   if (d.note) return `Note: ${d.note}`;
   if (entry.account_number) return entry.account_number;
