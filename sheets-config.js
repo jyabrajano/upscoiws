@@ -200,7 +200,7 @@ async function deleteNews(id, imagePath) {
 async function fetchCalendarEvents(fromISO, toISO) {
   let query = supabaseClient
     .from("calendar_events")
-    .select("id, event_date, title");
+    .select("id, event_date, title, image_path");
 
   if (fromISO) query = query.gte("event_date", fromISO);
   if (toISO) query = query.lte("event_date", toISO);
@@ -211,25 +211,30 @@ async function fetchCalendarEvents(fromISO, toISO) {
 
   if (error) throw error;
   // dashboard.html expects each event's date on a `date` key.
-  return (data || []).map(e => ({ id: e.id, date: e.event_date, title: e.title }));
+  return (data || []).map(e => ({ id: e.id, date: e.event_date, title: e.title, image_path: e.image_path }));
 }
 
-async function addCalendarEvent(dateStr, title) {
+async function addCalendarEvent(dateStr, title, imagePath) {
   const { data, error } = await supabaseClient
     .from("calendar_events")
-    .insert({ event_date: dateStr, title })
-    .select("id, event_date, title")
+    .insert({ event_date: dateStr, title, image_path: imagePath || null })
+    .select("id, event_date, title, image_path")
     .single();
 
   if (error) throw error;
-  return { id: data.id, date: data.event_date, title: data.title };
+  return { id: data.id, date: data.event_date, title: data.title, image_path: data.image_path };
 }
 
-async function deleteCalendarEvent(id) {
+async function deleteCalendarEvent(id, imagePath) {
   const { error } = await supabaseClient
     .from("calendar_events")
     .delete()
     .eq("id", id);
 
   if (error) throw error;
+
+  // Row first, object second -- same order as deleteNews(), and for the
+  // same reason: an orphaned object is cheaper than an event pointing at
+  // an image that no longer exists.
+  await deleteNewsImage(imagePath);
 }

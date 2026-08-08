@@ -657,6 +657,30 @@
   }
   .news-admin-btns button:hover { background: var(--white); color: var(--maroon); }
 
+  /* Event preview picker. Sits under the add-event form and borrows
+     .news-image-pick / .news-image-name / .news-image-clear so the two
+     admin composers stay one visual language. */
+  .event-image-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 6px;
+  }
+  .event-image-row input[type="file"] {
+    position: absolute; width: 1px; height: 1px;
+    opacity: 0; pointer-events: none;
+  }
+
+  /* Thumbnail in the day panel's event list. Fixed square so a row of
+     events stays aligned whatever shape the images are; object-fit
+     crops rather than distorting. */
+  .event-thumb {
+    width: 32px; height: 32px; flex-shrink: 0;
+    object-fit: cover; border-radius: var(--radius-xs);
+    border: 1px solid var(--card-border);
+    background: var(--surface);
+  }
+  .event-list-item { display: flex; align-items: center; gap: 8px; }
+  .event-list-title { flex: 1; min-width: 0; }
+
   .add-event-form {
     display: flex;
     gap: 8px;
@@ -1098,7 +1122,7 @@
   @media print {
     @page { size: auto; margin: 12mm 10mm; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    nav, .ai-launcher, .ai-widget, .profile-menu, .cal-header button, .add-event-form, .news-form, .news-admin-list, .event-del-btn, #adminSection {
+    nav, .ai-launcher, .ai-widget, .profile-menu, .cal-header button, .add-event-form, .event-image-row, .news-form, .news-admin-list, .event-del-btn, #adminSection {
       display: none !important;
     }
     html, body {

@@ -562,7 +562,8 @@
       html += `
         <ul class="event-list">
           ${events.map(e => `
-            <li class="event-list-item">
+            <li class="event-list-item" data-event-id="${escapeHtml(e.id)}">
+              ${e.image_path ? `<img class="event-thumb" data-img-for="${escapeHtml(e.id)}" alt="">` : ''}
               <span class="event-list-title">${escapeHtml(e.title)}</span>
               ${isAdmin ? `<button type="button" class="event-del-btn" data-id="${escapeHtml(e.id)}">Delete</button>` : ''}
             </li>
@@ -579,13 +580,48 @@
           <input type="text" id="newEventTitle" placeholder="Add event title…" maxlength="200" required>
           <button type="submit">Add</button>
         </form>
+        <div class="event-image-row">
+          <label class="news-image-pick" for="newEventImage">Add preview</label>
+          <input id="newEventImage" type="file"
+                 accept="image/jpeg,image/png,image/webp,image/gif">
+          <span class="news-image-name" id="newEventImageName">No image</span>
+          <button type="button" class="news-image-clear" id="newEventImageClear" style="display:none;">Remove</button>
+        </div>
       `;
     }
 
     calDetails.innerHTML = html;
 
+    // Signed after the panel is on screen rather than before. The URLs
+    // are an extra round trip each, and making the day panel wait on
+    // them would make every date click feel slow for the sake of a
+    // thumbnail. The <img> has no src until this resolves, so a failure
+    // leaves a gap rather than a broken-image icon.
+    events.filter(e => e.image_path).forEach(async (e) => {
+      const url = await newsImageUrl(e.image_path);
+      const el = calDetails.querySelector(`[data-img-for="${CSS.escape(String(e.id))}"]`);
+      // Re-checked because the panel may have been replaced by another
+      // date click while this was in flight.
+      if (url && el) el.src = url;
+    });
+
     if (isAdmin) {
       const addForm = document.getElementById("addEventForm");
+      const evtFile = document.getElementById("newEventImage");
+      const evtName = document.getElementById("newEventImageName");
+      const evtClear = document.getElementById("newEventImageClear");
+
+      evtFile.addEventListener("change", () => {
+        const f = evtFile.files && evtFile.files[0];
+        evtName.textContent = f ? f.name : "No image";
+        evtClear.style.display = f ? "" : "none";
+      });
+
+      evtClear.addEventListener("click", () => {
+        evtFile.value = "";
+        evtName.textContent = "No image";
+        evtClear.style.display = "none";
+      });
       addForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const titleInput = document.getElementById("newEventTitle");
@@ -594,13 +630,20 @@
         const submitBtn = addForm.querySelector("button[type=submit]");
         submitBtn.disabled = true;
         try {
-          const created = await addCalendarEvent(dateStr, title);
+          const picked = evtFile.files && evtFile.files[0];
+          const imagePath = picked ? await uploadNewsImage(picked) : null;
+          const created = await addCalendarEvent(dateStr, title, imagePath);
           allEvents.push(created);
           renderCalendar();
           openDayPanel(dateStr);
         } catch (err) {
           console.error("Failed to add event:", err);
-          alert("Couldn't add the event. You may not have admin permission, or the request failed — please try again.");
+          // uploadNewsImage() throws plain Error for the size and type
+          // cases, and that wording is worth showing. A PostgREST error
+          // carries a `code` and is not.
+          alert(err && err.message && !err.code
+            ? err.message
+            : "Couldn't add the event. You may not have admin permission, or the request failed — please try again.");
           submitBtn.disabled = false;
         }
       });
@@ -611,7 +654,8 @@
           if (!confirm("Delete this event?")) return;
           btn.disabled = true;
           try {
-            await deleteCalendarEvent(id);
+            const ev = allEvents.find(x => String(x.id) === String(id));
+            await deleteCalendarEvent(id, ev ? ev.image_path : null);
             allEvents = allEvents.filter(ev => String(ev.id) !== String(id));
             renderCalendar();
             openDayPanel(dateStr);
