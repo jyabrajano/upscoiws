@@ -236,6 +236,7 @@
     // The path already stored on the item being edited. Kept so an edit
     // that does not touch the picker leaves the existing image alone.
     let editingImagePath = null;
+    let editingThumbData = null;
     // Object URL for a freshly picked file, revoked when replaced --
     // otherwise every pick leaks a blob for the life of the page.
     let previewUrl = null;
@@ -267,6 +268,7 @@
     function resetForm() {
       editingId = null;
       editingImagePath = null;
+      editingThumbData = null;
       titleEl.value = "";
       contentEl.value = "";
       fileEl.value = "";
@@ -281,6 +283,7 @@
     async function beginEdit(item) {
       editingId = item.id;
       editingImagePath = item.image_path || null;
+      editingThumbData = item.thumb_data || null;
       titleEl.value = item.title || "";
       contentEl.value = item.content || "";
       fileEl.value = "";
@@ -311,8 +314,11 @@
           adminList.innerHTML = '<p class="empty">Nothing posted yet.</p>';
           return;
         }
-        const thumbMap = await newsImageUrls(items.map(n => n.image_path));
-        const thumbs = items.map(n => thumbMap.get(n.image_path) || null);
+        // Inline thumbnail first; only fall back to signing for rows
+        // predating thumb_data.
+        const needSigning = items.filter(n => n.image_path && !n.thumb_data).map(n => n.image_path);
+        const thumbMap = needSigning.length ? await newsImageUrls(needSigning) : new Map();
+        const thumbs = items.map(n => n.thumb_data || thumbMap.get(n.image_path) || null);
         adminList.innerHTML = items.map((n, i) => `
           <div class="news-admin-item${n.id === editingId ? " editing" : ""}">
             ${thumbs[i] ? `<img class="news-admin-thumb" src="${escapeHtml(thumbs[i])}" alt="" width="44" height="44" loading="lazy" decoding="async">` : ""}
@@ -381,6 +387,7 @@
     clearBtn.addEventListener("click", () => {
       fileEl.value = "";
       editingImagePath = null;
+      editingThumbData = null;
       fileName.textContent = "No image";
       setPreview(null);
     });
@@ -395,13 +402,18 @@
         const picked = fileEl.files && fileEl.files[0];
         let imagePath = editingImagePath;
 
+        let thumbData = editingThumbData;
+
         if (picked) {
           say("Uploading image…", null);
+          // Thumbnail first: it is local canvas work, so if it fails the
+          // upload has not happened yet and nothing is orphaned.
+          thumbData = await makeThumbData(picked);
           imagePath = await uploadNewsImage(picked);
         }
 
         if (editingId) {
-          await updateNews(editingId, titleEl.value, contentEl.value, imagePath);
+          await updateNews(editingId, titleEl.value, contentEl.value, imagePath, thumbData);
           // Only once the row points at the new object. Reversing this
           // would delete the old image and then, on a failed update,
           // leave the item pointing at nothing.
@@ -410,7 +422,7 @@
           }
           say("Changes saved.", "ok");
         } else {
-          await addNews(titleEl.value, contentEl.value, imagePath);
+          await addNews(titleEl.value, contentEl.value, imagePath, thumbData);
           say("Posted.", "ok");
         }
         resetForm();
@@ -565,7 +577,11 @@
         <ul class="event-list">
           ${events.map(e => `
             <li class="event-list-item" data-event-id="${escapeHtml(e.id)}">
-              ${e.image_path ? `<img class="event-thumb" data-img-for="${escapeHtml(e.id)}" alt="" width="32" height="32" loading="lazy" decoding="async">` : ''}
+              ${e.thumb_data
+                  ? `<img class="event-thumb" src="${escapeHtml(e.thumb_data)}" alt="" width="32" height="32" decoding="async">`
+                  : e.image_path
+                    ? `<img class="event-thumb" data-img-for="${escapeHtml(e.id)}" alt="" width="32" height="32" loading="lazy" decoding="async">`
+                    : ''}
               <span class="event-list-title">${escapeHtml(e.title)}</span>
               ${isAdmin ? `<button type="button" class="event-del-btn" data-id="${escapeHtml(e.id)}">Delete</button>` : ''}
             </li>
@@ -602,7 +618,10 @@
     // genuinely need the network, and the day panel should never wait on
     // a thumbnail. The <img> has no src until this resolves, so a
     // failure leaves a gap rather than a broken-image icon.
-    const withImages = events.filter(e => e.image_path);
+    // Only rows with no inline thumbnail need signing -- events created
+    // before thumb_data existed. Anything with thumb_data has already
+    // painted, from data that arrived with the row.
+    const withImages = events.filter(e => e.image_path && !e.thumb_data);
     if (withImages.length) {
       newsImageUrls(withImages.map(e => e.image_path)).then(urls => {
         withImages.forEach(e => {
@@ -641,8 +660,9 @@
         submitBtn.disabled = true;
         try {
           const picked = evtFile.files && evtFile.files[0];
+          const thumbData = picked ? await makeThumbData(picked) : null;
           const imagePath = picked ? await uploadNewsImage(picked) : null;
-          const created = await addCalendarEvent(dateStr, title, imagePath);
+          const created = await addCalendarEvent(dateStr, title, imagePath, thumbData);
           allEvents.push(created);
           renderCalendar();
           openDayPanel(dateStr);
@@ -688,7 +708,7 @@
   // awaited: the calendar is usable without thumbnails, and blocking the
   // grid on them would trade a visible delay for an invisible one.
   function prewarmEventImages() {
-    const paths = allEvents.map(e => e.image_path).filter(Boolean);
+    const paths = allEvents.filter(e => e.image_path && !e.thumb_data).map(e => e.image_path);
     if (paths.length) newsImageUrls(paths).catch(() => {});
   }
 

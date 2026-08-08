@@ -46,7 +46,7 @@ async function fetchNews(limit) {
 
   const { data, error } = await supabaseClient
     .from("news")
-    .select("id, title, content, image_path, created_at")
+    .select("id, title, content, image_path, thumb_data, created_at")
     .order("created_at", { ascending: false })
     .limit(cap);
 
@@ -75,6 +75,77 @@ const NEWS_IMAGE_BUCKET = "news-images";
 const NEWS_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const NEWS_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const NEWS_SIGNED_URL_TTL = 3600;
+const NEWS_IMAGE_MAX_DIM = 1600;    // long edge of the stored image
+const NEWS_THUMB_MAX_CHARS = 20000; // matches the CHECK constraint on the columns
+
+// Draws `file` into a canvas no larger than maxDim on its long edge and
+// returns a data URL. Used two ways: for the inline thumbnail, and to
+// shrink the full image before upload.
+//
+// WebP where the browser supports it -- roughly a third the bytes of
+// JPEG at the same quality. toDataURL falls back to PNG silently if the
+// type is unsupported, so the result is checked rather than assumed.
+function drawScaled(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, w, h);
+
+      let out = canvas.toDataURL("image/webp", quality);
+      if (!out.startsWith("data:image/webp")) {
+        out = canvas.toDataURL("image/jpeg", quality);
+      }
+      resolve({ dataUrl: out, width: w, height: h });
+    };
+
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't read that image.")); };
+    img.src = url;
+  });
+}
+
+// ~48px so a 32px thumbnail is still sharp on a 2x screen. Returns null
+// rather than throwing: a missing thumbnail costs a round trip later,
+// which is worth far less than failing the whole upload over.
+async function makeThumbData(file) {
+  try {
+    const { dataUrl } = await drawScaled(file, 48, 0.72);
+    return dataUrl.length <= NEWS_THUMB_MAX_CHARS ? dataUrl : null;
+  } catch (e) {
+    console.warn("Couldn't build inline thumbnail:", e);
+    return null;
+  }
+}
+
+// Shrinks the stored image to something a dashboard card can actually
+// use. A 4000px photo off a phone renders identically at card width and
+// costs twenty times the download -- which matters most on the phones
+// staff are likely checking this on.
+async function shrinkForUpload(file) {
+  try {
+    const { dataUrl } = await drawScaled(file, NEWS_IMAGE_MAX_DIM, 0.85);
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    // Only if it actually helped. Small PNGs with flat colour can come
+    // back LARGER from a lossy re-encode.
+    if (blob.size >= file.size) return file;
+    return new File([blob], file.name, { type: blob.type });
+  } catch (e) {
+    console.warn("Couldn't downscale image, uploading original:", e);
+    return file;
+  }
+}
 
 async function uploadNewsImage(file) {
   if (!file) return null;
@@ -95,9 +166,11 @@ async function uploadNewsImage(file) {
   const ext = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "");
   const path = `${crypto.randomUUID()}.${ext || "bin"}`;
 
+  const toUpload = await shrinkForUpload(file);
+
   const { error } = await supabaseClient
     .storage.from(NEWS_IMAGE_BUCKET)
-    .upload(path, file, { cacheControl: "3600", upsert: false });
+    .upload(path, toUpload, { cacheControl: "3600", upsert: false });
 
   if (error) throw error;
   return path;
@@ -171,7 +244,7 @@ async function deleteNewsImage(path) {
   if (error) console.warn("Couldn't remove news image:", error);
 }
 
-async function addNews(title, content, imagePath) {
+async function addNews(title, content, imagePath, thumbData) {
   const cleanTitle = String(title == null ? "" : title).trim();
   const cleanContent = String(content == null ? "" : content).trim();
 
@@ -186,15 +259,15 @@ async function addNews(title, content, imagePath) {
 
   const { data, error } = await supabaseClient
     .from("news")
-    .insert({ title: cleanTitle, content: cleanContent, image_path: imagePath || null })
-    .select("id, title, content, image_path, created_at")
+    .insert({ title: cleanTitle, content: cleanContent, image_path: imagePath || null, thumb_data: thumbData || null })
+    .select("id, title, content, image_path, thumb_data, created_at")
     .single();
 
   if (error) throw error;
   return data;
 }
 
-async function updateNews(id, title, content, imagePath) {
+async function updateNews(id, title, content, imagePath, thumbData) {
   const cleanTitle = String(title == null ? "" : title).trim();
   const cleanContent = String(content == null ? "" : content).trim();
 
@@ -212,9 +285,9 @@ async function updateNews(id, title, content, imagePath) {
   // would jump it back to the top of a list ordered by it.
   const { data, error } = await supabaseClient
     .from("news")
-    .update({ title: cleanTitle, content: cleanContent, image_path: imagePath || null })
+    .update({ title: cleanTitle, content: cleanContent, image_path: imagePath || null, thumb_data: thumbData || null })
     .eq("id", id)
-    .select("id, title, content, image_path, created_at")
+    .select("id, title, content, image_path, thumb_data, created_at")
     .single();
 
   if (error) throw error;
@@ -247,7 +320,7 @@ async function deleteNews(id, imagePath) {
 async function fetchCalendarEvents(fromISO, toISO) {
   let query = supabaseClient
     .from("calendar_events")
-    .select("id, event_date, title, image_path");
+    .select("id, event_date, title, image_path, thumb_data");
 
   if (fromISO) query = query.gte("event_date", fromISO);
   if (toISO) query = query.lte("event_date", toISO);
@@ -258,18 +331,18 @@ async function fetchCalendarEvents(fromISO, toISO) {
 
   if (error) throw error;
   // dashboard.html expects each event's date on a `date` key.
-  return (data || []).map(e => ({ id: e.id, date: e.event_date, title: e.title, image_path: e.image_path }));
+  return (data || []).map(e => ({ id: e.id, date: e.event_date, title: e.title, image_path: e.image_path, thumb_data: e.thumb_data }));
 }
 
-async function addCalendarEvent(dateStr, title, imagePath) {
+async function addCalendarEvent(dateStr, title, imagePath, thumbData) {
   const { data, error } = await supabaseClient
     .from("calendar_events")
-    .insert({ event_date: dateStr, title, image_path: imagePath || null })
-    .select("id, event_date, title, image_path")
+    .insert({ event_date: dateStr, title, image_path: imagePath || null, thumb_data: thumbData || null })
+    .select("id, event_date, title, image_path, thumb_data")
     .single();
 
   if (error) throw error;
-  return { id: data.id, date: data.event_date, title: data.title, image_path: data.image_path };
+  return { id: data.id, date: data.event_date, title: data.title, image_path: data.image_path, thumb_data: data.thumb_data };
 }
 
 async function deleteCalendarEvent(id, imagePath) {
