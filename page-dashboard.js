@@ -318,7 +318,7 @@
               <strong>${escapeHtml(n.title)}</strong>
               <span>${escapeHtml(n.content)}</span>
             </div>
-            <span class="news-admin-date">${n.created_at ? formatDate(n.created_at) : ""}</span>
+            <span class="news-admin-date">${formatTimestamp(n.created_at)}</span>
             <div class="news-admin-btns">
               <button type="button" data-news-edit="${escapeHtml(n.id)}">Edit</button>
               <button type="button" data-news-del="${escapeHtml(n.id)}">Delete</button>
@@ -647,9 +647,23 @@
   });
 })();
 
+// Calendar events only. event_date is a plain YYYY-MM-DD date, and the
+// "T00:00:00" is what stops the browser reading it as UTC midnight and
+// showing the day before east of Greenwich.
 function formatDate(iso) {
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// news.created_at is a timestamptz, not a date. Passing it to
+// formatDate() above appends a second time component -- producing
+// "...+00:00T00:00:00", which is an Invalid Date. It already carries its
+// own offset, so it is parsed as-is and rendered in local time.
+function formatTimestamp(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 const aiLauncher = document.getElementById("aiLauncher");
