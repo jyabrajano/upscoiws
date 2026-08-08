@@ -1459,6 +1459,139 @@ function enablePasswordToggles(root) {
     .forEach(attachPasswordToggle);
 }
 
+// ============================================================
+// Live refresh — watchDatasets()
+//
+// Pages call this to re-run their own loaders when the Cash Office
+// imports new data, so a statement left open overnight is not quietly
+// stale the next morning.
+//
+// It watches public.data_versions, NOT the data tables. That table
+// holds one row per dataset (a name, a counter, a timestamp) and is
+// bumped once per import by a statement-level trigger. Subscribing to
+// transactions directly would mean one Realtime event per ROW per
+// SUBSCRIBER — a 1,555-row cheque import becomes 1,555 events for every
+// signed-in user, each re-running the row-level security predicate — and
+// it would push payment data across the socket for no reason.
+//
+// The callback receives the dataset name. It should REFETCH through the
+// page's normal query; nothing here carries data, so RLS still decides
+// what the person can actually see.
+//
+//   const stop = watchDatasets(["transactions"], () => loadTransactions());
+//
+// Three things it handles that a bare .subscribe() does not:
+//
+//   * Debounce. One import can bump several datasets in quick
+//     succession; without this the page refetches once per bump.
+//   * Sleep and reconnect. A laptop that was closed misses the event
+//     entirely, so the version is re-checked whenever the tab becomes
+//     visible again and the callback fires if it moved.
+//   * Realtime being unavailable. If the socket never connects, it
+//     falls back to polling the version every 60s. Slower, but the page
+//     still updates rather than silently never updating.
+// ============================================================
+const DATA_REFRESH_POLL_MS = 60000;
+const DATA_REFRESH_DEBOUNCE_MS = 400;
+
+function watchDatasets(datasets, onChange) {
+  const wanted = (Array.isArray(datasets) ? datasets : [datasets]).filter(Boolean);
+  if (!wanted.length || typeof onChange !== "function") return () => {};
+
+  const seen = new Map();
+  let timer = null;
+  let poller = null;
+  let channel = null;
+  let stopped = false;
+
+  // Records the version and reports whether it actually moved. First
+  // sighting is not a change — otherwise every page would refetch once
+  // immediately after loading.
+  function moved(dataset, version) {
+    if (!wanted.includes(dataset)) return false;
+    const had = seen.has(dataset);
+    const prev = seen.get(dataset);
+    seen.set(dataset, version);
+    return had && version !== prev;
+  }
+
+  function fire(dataset) {
+    if (stopped) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      try {
+        onChange(dataset);
+      } catch (err) {
+        console.error("[watchDatasets] refresh handler failed:", err);
+      }
+    }, DATA_REFRESH_DEBOUNCE_MS);
+  }
+
+  async function readVersions(fireOnChange) {
+    try {
+      const { data, error } = await supabaseClient
+        .from("data_versions")
+        .select("dataset, version")
+        .in("dataset", wanted);
+      if (error) throw error;
+      let changed = null;
+      (data || []).forEach(row => {
+        if (moved(row.dataset, row.version)) changed = row.dataset;
+      });
+      if (changed && fireOnChange) fire(changed);
+    } catch (err) {
+      // Not fatal: the page keeps whatever it already has on screen.
+      console.warn("[watchDatasets] couldn't read data_versions:", err);
+    }
+  }
+
+  function startPolling() {
+    if (poller || stopped) return;
+    poller = setInterval(() => readVersions(true), DATA_REFRESH_POLL_MS);
+  }
+
+  // Baseline first, so the first real change is measured against
+  // something rather than treated as a change in itself.
+  readVersions(false).then(() => {
+    if (stopped) return;
+    try {
+      channel = supabaseClient
+        .channel("data-versions")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "data_versions" },
+          payload => {
+            const row = payload.new || {};
+            if (moved(row.dataset, row.version)) fire(row.dataset);
+          }
+        )
+        .subscribe(status => {
+          // CHANNEL_ERROR / TIMED_OUT means Realtime is unavailable —
+          // the project may have it switched off, or the network is
+          // blocking the WebSocket. Poll instead of doing nothing.
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") startPolling();
+        });
+    } catch (err) {
+      console.warn("[watchDatasets] Realtime unavailable, polling instead:", err);
+      startPolling();
+    }
+  });
+
+  // Catches the closed-laptop case, which the socket cannot.
+  function onVisible() {
+    if (document.visibilityState === "visible") readVersions(true);
+  }
+  document.addEventListener("visibilitychange", onVisible);
+
+  return function stop() {
+    stopped = true;
+    clearTimeout(timer);
+    if (poller) clearInterval(poller);
+    document.removeEventListener("visibilitychange", onVisible);
+    if (channel) supabaseClient.removeChannel(channel);
+  };
+}
+
 function initSharedBehaviour() {
   enablePasswordToggles();
   enableAccountNumberInputs();

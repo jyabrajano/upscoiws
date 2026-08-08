@@ -120,6 +120,9 @@
     document.getElementById("adminSection").appendChild(availableCard);
   }
 
+  // Wrapped in a named function so the live-refresh watcher below can
+  // re-run exactly what ran on load, rather than duplicating the query.
+  async function loadAvailable() {
   try {
     // available_transactions.user_email holds a comma-separated list
     // on some rows — one payment, several contact addresses at the
@@ -165,6 +168,13 @@
     console.error("Failed to load available_transactions:", e);
     availableBody.innerHTML = '<tr><td colspan="7" class="empty">Couldn\'t load transactions right now.</td></tr>';
   }
+  }
+
+  await loadAvailable();
+
+  // Cheques released while the dashboard is open should appear without
+  // the person having to reload. watchDatasets() is in config.js.
+  watchDatasets(["available_transactions"], loadAvailable);
 
   const newsList = document.getElementById("newsList");
   try {

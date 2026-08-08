@@ -298,6 +298,24 @@ async function loadTransactions(fromISO, toISO) {
   }
 
   applyFilters();
+
+  // Live refresh. The Cash Office imports ATM and cheque data in bulk,
+  // and a statement left open is stale from that moment until someone
+  // reloads. Refetch within whatever date range is currently on screen,
+  // so an import does not quietly reset the person's filters.
+  //
+  // watchDatasets() comes from config.js; it watches the version signal
+  // rather than the tables themselves. See the note there for why.
+  watchDatasets(["transactions", "released_transactions"], () => {
+    // applyFilters() already refetches when the bounds move, and skips
+    // the round trip when they haven't. Invalidating the markers it
+    // compares against makes it treat the current range as new, so one
+    // call refetches AND repaints — with the person's date range and
+    // account picker left exactly as they set them.
+    loadedFrom = null;
+    loadedTo = null;
+    applyFilters();
+  });
 })();
 
 // Switches between the two tabs. They are not two views of one
