@@ -103,19 +103,66 @@ async function uploadNewsImage(file) {
   return path;
 }
 
-async function newsImageUrl(path) {
-  if (!path) return null;
+// Signed URLs are cached by path. Without this, clicking between dates
+// re-signs the same handful of images every time -- a round trip each,
+// for a URL that is still valid. Expiry is held a minute short of the
+// real TTL so a cached URL cannot be handed out just as it lapses.
+const signedUrlCache = new Map();
+const SIGNED_URL_CACHE_MS = (NEWS_SIGNED_URL_TTL - 60) * 1000;
+
+function cachedUrl(path) {
+  const hit = signedUrlCache.get(path);
+  if (!hit) return null;
+  if (Date.now() > hit.expires) { signedUrlCache.delete(path); return null; }
+  return hit.url;
+}
+
+function cacheUrl(path, url) {
+  if (url) signedUrlCache.set(path, { url, expires: Date.now() + SIGNED_URL_CACHE_MS });
+}
+
+// Signs many paths in ONE request. createSignedUrl() (singular) is a
+// round trip per image, so a day with four events cost four; this costs
+// one regardless. Anything already cached is not re-signed at all.
+async function newsImageUrls(paths) {
+  const wanted = [...new Set((paths || []).filter(Boolean))];
+  const out = new Map();
+
+  const missing = [];
+  for (const p of wanted) {
+    const hit = cachedUrl(p);
+    if (hit) out.set(p, hit); else missing.push(p);
+  }
+  if (!missing.length) return out;
+
   const { data, error } = await supabaseClient
     .storage.from(NEWS_IMAGE_BUCKET)
-    .createSignedUrl(path, NEWS_SIGNED_URL_TTL);
+    .createSignedUrls(missing, NEWS_SIGNED_URL_TTL);
 
-  // A missing image should not blank the announcement it belongs to.
-  if (error) { console.warn("Couldn't sign news image:", error); return null; }
-  return data ? data.signedUrl : null;
+  // A missing image should not blank the item it belongs to.
+  if (error) { console.warn("Couldn't sign images:", error); return out; }
+
+  (data || []).forEach(row => {
+    if (row && row.signedUrl && !row.error) {
+      out.set(row.path, row.signedUrl);
+      cacheUrl(row.path, row.signedUrl);
+    }
+  });
+  return out;
+}
+
+async function newsImageUrl(path) {
+  if (!path) return null;
+  const hit = cachedUrl(path);
+  if (hit) return hit;
+
+  const map = await newsImageUrls([path]);
+  return map.get(path) || null;
 }
 
 async function deleteNewsImage(path) {
   if (!path) return;
+  signedUrlCache.delete(path);
   const { error } = await supabaseClient
     .storage.from(NEWS_IMAGE_BUCKET)
     .remove([path]);

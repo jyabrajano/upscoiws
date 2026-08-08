@@ -185,10 +185,10 @@
     try {
       const news = await fetchNews(5);
 
-      // Signed in parallel. Each URL is an independent round trip, so
-      // awaiting them in sequence would add a request's latency per
-      // item with an image.
-      const urls = await Promise.all(news.map(n => newsImageUrl(n.image_path)));
+      // One request for every image on the list, not one each. Cached
+      // by path, so a repaint after posting costs nothing.
+      const urlMap = await newsImageUrls(news.map(n => n.image_path));
+      const urls = news.map(n => urlMap.get(n.image_path) || null);
 
       newsList.innerHTML = news.length
         ? news.map((n, i) => `
@@ -311,10 +311,11 @@
           adminList.innerHTML = '<p class="empty">Nothing posted yet.</p>';
           return;
         }
-        const thumbs = await Promise.all(items.map(n => newsImageUrl(n.image_path)));
+        const thumbMap = await newsImageUrls(items.map(n => n.image_path));
+        const thumbs = items.map(n => thumbMap.get(n.image_path) || null);
         adminList.innerHTML = items.map((n, i) => `
           <div class="news-admin-item${n.id === editingId ? " editing" : ""}">
-            ${thumbs[i] ? `<img class="news-admin-thumb" src="${escapeHtml(thumbs[i])}" alt="">` : ""}
+            ${thumbs[i] ? `<img class="news-admin-thumb" src="${escapeHtml(thumbs[i])}" alt="" width="44" height="44" loading="lazy" decoding="async">` : ""}
             <div class="news-admin-text">
               <strong>${escapeHtml(n.title)}</strong>
               <span>${escapeHtml(n.content)}</span>
@@ -481,6 +482,7 @@
     if (!monthIsLoaded(currentDisplayDate)) {
       try {
         await loadCalendarWindow(currentDisplayDate);
+        prewarmEventImages();
       } catch (e) {
         console.error("Failed to load calendar events:", e);
       }
@@ -563,7 +565,7 @@
         <ul class="event-list">
           ${events.map(e => `
             <li class="event-list-item" data-event-id="${escapeHtml(e.id)}">
-              ${e.image_path ? `<img class="event-thumb" data-img-for="${escapeHtml(e.id)}" alt="">` : ''}
+              ${e.image_path ? `<img class="event-thumb" data-img-for="${escapeHtml(e.id)}" alt="" width="32" height="32" loading="lazy" decoding="async">` : ''}
               <span class="event-list-title">${escapeHtml(e.title)}</span>
               ${isAdmin ? `<button type="button" class="event-del-btn" data-id="${escapeHtml(e.id)}">Delete</button>` : ''}
             </li>
@@ -592,18 +594,26 @@
 
     calDetails.innerHTML = html;
 
-    // Signed after the panel is on screen rather than before. The URLs
-    // are an extra round trip each, and making the day panel wait on
-    // them would make every date click feel slow for the sake of a
-    // thumbnail. The <img> has no src until this resolves, so a failure
-    // leaves a gap rather than a broken-image icon.
-    events.filter(e => e.image_path).forEach(async (e) => {
-      const url = await newsImageUrl(e.image_path);
-      const el = calDetails.querySelector(`[data-img-for="${CSS.escape(String(e.id))}"]`);
-      // Re-checked because the panel may have been replaced by another
-      // date click while this was in flight.
-      if (url && el) el.src = url;
-    });
+    // One batched call for the whole day, not one per image -- and
+    // normally a cache hit costing no request at all, because
+    // prewarmEventImages() has already signed this month.
+    //
+    // Still after the panel paints: the first visit to a month may
+    // genuinely need the network, and the day panel should never wait on
+    // a thumbnail. The <img> has no src until this resolves, so a
+    // failure leaves a gap rather than a broken-image icon.
+    const withImages = events.filter(e => e.image_path);
+    if (withImages.length) {
+      newsImageUrls(withImages.map(e => e.image_path)).then(urls => {
+        withImages.forEach(e => {
+          const url = urls.get(e.image_path);
+          const el = calDetails.querySelector(`[data-img-for="${CSS.escape(String(e.id))}"]`);
+          // Re-checked because the panel may have been replaced by
+          // another date click while this was in flight.
+          if (url && el) el.src = url;
+        });
+      });
+    }
 
     if (isAdmin) {
       const addForm = document.getElementById("addEventForm");
@@ -673,9 +683,19 @@
     calDetails.innerHTML = '<span class="empty">Click any date to view or add events.</span>';
   }
 
+  // Signs every image in the loaded window in one request, so opening a
+  // day panel is a cache read rather than a round trip. Deliberately not
+  // awaited: the calendar is usable without thumbnails, and blocking the
+  // grid on them would trade a visible delay for an invisible one.
+  function prewarmEventImages() {
+    const paths = allEvents.map(e => e.image_path).filter(Boolean);
+    if (paths.length) newsImageUrls(paths).catch(() => {});
+  }
+
   try {
     await loadCalendarWindow(currentDisplayDate);
     renderCalendar();
+    prewarmEventImages();
   } catch (e) {
     console.error("Failed to load calendar events:", e);
     calGrid.innerHTML = '<p class="empty" style="grid-column: 1 / -1;">Couldn\'t load calendar right now.</p>';
