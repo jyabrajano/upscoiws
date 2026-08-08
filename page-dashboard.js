@@ -193,6 +193,7 @@
       newsList.innerHTML = news.length
         ? news.map((n, i) => `
             <div class="news-item">
+              <time class="news-date">${formatTimestamp(n.created_at)}</time>
               <h3>${escapeHtml(n.title)}</h3>
               <p>${escapeHtml(n.content)}</p>
               ${urls[i] ? `<img src="${escapeHtml(urls[i])}" alt="">` : ""}

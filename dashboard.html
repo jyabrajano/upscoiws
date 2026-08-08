@@ -556,9 +556,32 @@
   }
 
   /* Image on a published item, public list and admin list. */
+  /* Date line above the headline. .news-item h3 carries its own
+     margin, so this only needs to clear space beneath itself. */
+  .news-date {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  /* max-height as well as max-width. Without it a tall image renders at
+     its natural height and pushes the rest of the dashboard off the
+     screen -- a portrait logo can be several times the card's height.
+     object-fit: contain keeps the whole image visible rather than
+     cropping it to fit. */
   .news-item img {
-    display: block; max-width: 100%; height: auto;
-    margin-top: 8px; border-radius: var(--radius-xs);
+    display: block;
+    max-width: 100%;
+    max-height: 220px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    margin-top: 8px;
+    border-radius: var(--radius-xs);
     border: 1px solid var(--card-border);
   }
   .news-admin-thumb {
