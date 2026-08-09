@@ -28,12 +28,6 @@
 // The caps below are deliberately generous. They exist so the payload
 // has a ceiling at all, not to ration anything.
 const NEWS_LIMIT = 50;
-
-// Caps for the admin composer. news.title and news.content are unbounded
-// text in the database, so these are the only limit there is -- without
-// them one paste can push every other item off the dashboard.
-const NEWS_TITLE_MAX = 120;
-const NEWS_CONTENT_MAX = 2000;
 const CALENDAR_LIMIT = 500;
 
 // ---------- news ----------
@@ -46,266 +40,12 @@ async function fetchNews(limit) {
 
   const { data, error } = await supabaseClient
     .from("news")
-    .select("id, title, content, image_path, thumb_data, created_at")
+    .select("id, title, content, created_at")
     .order("created_at", { ascending: false })
     .limit(cap);
 
   if (error) throw error;
   return data || [];
-}
-
-// News is written by administrators only. The three functions below all
-// go straight at the table rather than through an RPC, because
-// news_admin_write already says `is_admin()` for USING and WITH CHECK --
-// a wrapper function would be a second copy of that rule to keep in
-// step, which is how the two halves of a check drift apart.
-//
-// A non-admin calling these gets an empty result or a policy error from
-// PostgREST, not a silent success. The form in page-dashboard.js is
-// hidden for non-admins as well, but that is a courtesy: the row-level
-// policy is what actually decides.
-
-// ---------- news images ----------
-
-// The bucket is PRIVATE, so an <img src> pointing straight at it gets a
-// 400. Reads go through a short-lived signed URL instead, which is also
-// what keeps an image behind the same rule as the news item itself: an
-// unapproved user cannot mint one.
-const NEWS_IMAGE_BUCKET = "news-images";
-const NEWS_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
-const NEWS_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-const NEWS_SIGNED_URL_TTL = 3600;
-const NEWS_IMAGE_MAX_DIM = 1600;    // long edge of the stored image
-const NEWS_THUMB_MAX_CHARS = 20000; // matches the CHECK constraint on the columns
-
-// Draws `file` into a canvas no larger than maxDim on its long edge and
-// returns a data URL. Used two ways: for the inline thumbnail, and to
-// shrink the full image before upload.
-//
-// WebP where the browser supports it -- roughly a third the bytes of
-// JPEG at the same quality. toDataURL falls back to PNG silently if the
-// type is unsupported, so the result is checked rather than assumed.
-function drawScaled(file, maxDim, quality) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-      const w = Math.max(1, Math.round(img.width * scale));
-      const h = Math.max(1, Math.round(img.height * scale));
-
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(img, 0, 0, w, h);
-
-      let out = canvas.toDataURL("image/webp", quality);
-      if (!out.startsWith("data:image/webp")) {
-        out = canvas.toDataURL("image/jpeg", quality);
-      }
-      resolve({ dataUrl: out, width: w, height: h });
-    };
-
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't read that image.")); };
-    img.src = url;
-  });
-}
-
-// ~48px so a 32px thumbnail is still sharp on a 2x screen. Returns null
-// rather than throwing: a missing thumbnail costs a round trip later,
-// which is worth far less than failing the whole upload over.
-async function makeThumbData(file) {
-  try {
-    const { dataUrl } = await drawScaled(file, 48, 0.72);
-    return dataUrl.length <= NEWS_THUMB_MAX_CHARS ? dataUrl : null;
-  } catch (e) {
-    console.warn("Couldn't build inline thumbnail:", e);
-    return null;
-  }
-}
-
-// Shrinks the stored image to something a dashboard card can actually
-// use. A 4000px photo off a phone renders identically at card width and
-// costs twenty times the download -- which matters most on the phones
-// staff are likely checking this on.
-async function shrinkForUpload(file) {
-  try {
-    const { dataUrl } = await drawScaled(file, NEWS_IMAGE_MAX_DIM, 0.85);
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
-    // Only if it actually helped. Small PNGs with flat colour can come
-    // back LARGER from a lossy re-encode.
-    if (blob.size >= file.size) return file;
-    return new File([blob], file.name, { type: blob.type });
-  } catch (e) {
-    console.warn("Couldn't downscale image, uploading original:", e);
-    return file;
-  }
-}
-
-async function uploadNewsImage(file) {
-  if (!file) return null;
-
-  // Checked here as well as on the bucket. The bucket is the control --
-  // this is so someone picking a 40 MB photo is told immediately rather
-  // than after the upload fails.
-  if (!NEWS_IMAGE_TYPES.includes(file.type)) {
-    throw new Error("Images must be JPEG, PNG, WebP or GIF.");
-  }
-  if (file.size > NEWS_IMAGE_MAX_BYTES) {
-    throw new Error("Images must be 2 MB or smaller.");
-  }
-
-  // Random name, not the original. An uploaded filename can carry a
-  // person's name, a path, or characters that need escaping every time
-  // the value is used; none of that is worth keeping for a dashboard card.
-  const ext = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const path = `${crypto.randomUUID()}.${ext || "bin"}`;
-
-  const toUpload = await shrinkForUpload(file);
-
-  const { error } = await supabaseClient
-    .storage.from(NEWS_IMAGE_BUCKET)
-    .upload(path, toUpload, { cacheControl: "3600", upsert: false });
-
-  if (error) throw error;
-  return path;
-}
-
-// Signed URLs are cached by path. Without this, clicking between dates
-// re-signs the same handful of images every time -- a round trip each,
-// for a URL that is still valid. Expiry is held a minute short of the
-// real TTL so a cached URL cannot be handed out just as it lapses.
-const signedUrlCache = new Map();
-const SIGNED_URL_CACHE_MS = (NEWS_SIGNED_URL_TTL - 60) * 1000;
-
-function cachedUrl(path) {
-  const hit = signedUrlCache.get(path);
-  if (!hit) return null;
-  if (Date.now() > hit.expires) { signedUrlCache.delete(path); return null; }
-  return hit.url;
-}
-
-function cacheUrl(path, url) {
-  if (url) signedUrlCache.set(path, { url, expires: Date.now() + SIGNED_URL_CACHE_MS });
-}
-
-// Signs many paths in ONE request. createSignedUrl() (singular) is a
-// round trip per image, so a day with four events cost four; this costs
-// one regardless. Anything already cached is not re-signed at all.
-async function newsImageUrls(paths) {
-  const wanted = [...new Set((paths || []).filter(Boolean))];
-  const out = new Map();
-
-  const missing = [];
-  for (const p of wanted) {
-    const hit = cachedUrl(p);
-    if (hit) out.set(p, hit); else missing.push(p);
-  }
-  if (!missing.length) return out;
-
-  const { data, error } = await supabaseClient
-    .storage.from(NEWS_IMAGE_BUCKET)
-    .createSignedUrls(missing, NEWS_SIGNED_URL_TTL);
-
-  // A missing image should not blank the item it belongs to.
-  if (error) { console.warn("Couldn't sign images:", error); return out; }
-
-  (data || []).forEach(row => {
-    if (row && row.signedUrl && !row.error) {
-      out.set(row.path, row.signedUrl);
-      cacheUrl(row.path, row.signedUrl);
-    }
-  });
-  return out;
-}
-
-async function newsImageUrl(path) {
-  if (!path) return null;
-  const hit = cachedUrl(path);
-  if (hit) return hit;
-
-  const map = await newsImageUrls([path]);
-  return map.get(path) || null;
-}
-
-async function deleteNewsImage(path) {
-  if (!path) return;
-  signedUrlCache.delete(path);
-  const { error } = await supabaseClient
-    .storage.from(NEWS_IMAGE_BUCKET)
-    .remove([path]);
-  // Logged, not thrown: a leftover object is untidy, but failing the
-  // whole delete over it would leave the news item on the dashboard.
-  if (error) console.warn("Couldn't remove news image:", error);
-}
-
-async function addNews(title, content, imagePath, thumbData) {
-  const cleanTitle = String(title == null ? "" : title).trim();
-  const cleanContent = String(content == null ? "" : content).trim();
-
-  if (!cleanTitle) throw new Error("A headline is required.");
-  if (!cleanContent) throw new Error("Some text is required.");
-  if (cleanTitle.length > NEWS_TITLE_MAX) {
-    throw new Error(`Headline must be ${NEWS_TITLE_MAX} characters or fewer.`);
-  }
-  if (cleanContent.length > NEWS_CONTENT_MAX) {
-    throw new Error(`Text must be ${NEWS_CONTENT_MAX} characters or fewer.`);
-  }
-
-  const { data, error } = await supabaseClient
-    .from("news")
-    .insert({ title: cleanTitle, content: cleanContent, image_path: imagePath || null, thumb_data: thumbData || null })
-    .select("id, title, content, image_path, thumb_data, created_at")
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
-async function updateNews(id, title, content, imagePath, thumbData) {
-  const cleanTitle = String(title == null ? "" : title).trim();
-  const cleanContent = String(content == null ? "" : content).trim();
-
-  if (!cleanTitle) throw new Error("A headline is required.");
-  if (!cleanContent) throw new Error("Some text is required.");
-  if (cleanTitle.length > NEWS_TITLE_MAX) {
-    throw new Error(`Headline must be ${NEWS_TITLE_MAX} characters or fewer.`);
-  }
-  if (cleanContent.length > NEWS_CONTENT_MAX) {
-    throw new Error(`Text must be ${NEWS_CONTENT_MAX} characters or fewer.`);
-  }
-
-  // created_at is deliberately not touched. An edit is a correction to an
-  // existing announcement, not a new one, and rewriting the timestamp
-  // would jump it back to the top of a list ordered by it.
-  const { data, error } = await supabaseClient
-    .from("news")
-    .update({ title: cleanTitle, content: cleanContent, image_path: imagePath || null, thumb_data: thumbData || null })
-    .eq("id", id)
-    .select("id, title, content, image_path, thumb_data, created_at")
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
-async function deleteNews(id, imagePath) {
-  const { error } = await supabaseClient
-    .from("news")
-    .delete()
-    .eq("id", id);
-
-  if (error) throw error;
-
-  // Row first, object second. If this order were reversed and the row
-  // delete failed, the dashboard would show an announcement whose image
-  // no longer exists. An orphaned object is the cheaper of the two.
-  await deleteNewsImage(imagePath);
 }
 
 // ---------- calendar ----------
@@ -320,7 +60,7 @@ async function deleteNews(id, imagePath) {
 async function fetchCalendarEvents(fromISO, toISO) {
   let query = supabaseClient
     .from("calendar_events")
-    .select("id, event_date, title, image_path, thumb_data");
+    .select("id, event_date, title");
 
   if (fromISO) query = query.gte("event_date", fromISO);
   if (toISO) query = query.lte("event_date", toISO);
@@ -331,30 +71,25 @@ async function fetchCalendarEvents(fromISO, toISO) {
 
   if (error) throw error;
   // dashboard.html expects each event's date on a `date` key.
-  return (data || []).map(e => ({ id: e.id, date: e.event_date, title: e.title, image_path: e.image_path, thumb_data: e.thumb_data }));
+  return (data || []).map(e => ({ id: e.id, date: e.event_date, title: e.title }));
 }
 
-async function addCalendarEvent(dateStr, title, imagePath, thumbData) {
+async function addCalendarEvent(dateStr, title) {
   const { data, error } = await supabaseClient
     .from("calendar_events")
-    .insert({ event_date: dateStr, title, image_path: imagePath || null, thumb_data: thumbData || null })
-    .select("id, event_date, title, image_path, thumb_data")
+    .insert({ event_date: dateStr, title })
+    .select("id, event_date, title")
     .single();
 
   if (error) throw error;
-  return { id: data.id, date: data.event_date, title: data.title, image_path: data.image_path, thumb_data: data.thumb_data };
+  return { id: data.id, date: data.event_date, title: data.title };
 }
 
-async function deleteCalendarEvent(id, imagePath) {
+async function deleteCalendarEvent(id) {
   const { error } = await supabaseClient
     .from("calendar_events")
     .delete()
     .eq("id", id);
 
   if (error) throw error;
-
-  // Row first, object second -- same order as deleteNews(), and for the
-  // same reason: an orphaned object is cheaper than an event pointing at
-  // an image that no longer exists.
-  await deleteNewsImage(imagePath);
 }

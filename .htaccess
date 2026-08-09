@@ -14,9 +14,14 @@
 
 # ---- security headers ----
 <IfModule mod_headers.c>
-  # The connect-src line below is GENERATED. `node sync-csp.js` reads
-  # SUPABASE_URL out of config.js and rewrites it here as well as in
-  # the nine pages — do not edit it by hand.
+  # The connect-src AND img-src directives below are GENERATED.
+  # `node sync-csp.js` reads SUPABASE_URL out of config.js and rewrites
+  # both here as well as in the nine pages — do not edit them by hand.
+  #
+  # img-src names the project because the news-images Storage bucket is
+  # private: its images arrive as signed URLs from the project host, not
+  # as public asset URLs, so 'self' does not cover them. `data:` stays
+  # for inline thumbnails and the UP seal.
   #
   # It did not always cover this file, and the omission was worse than
   # it looks. When a response header and a <meta> tag both carry a CSP,

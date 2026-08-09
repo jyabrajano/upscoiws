@@ -1,0 +1,281 @@
+/* =====================================================================
+   U.P. System Cash Office — interaction layer
+   Loaded last on every page, after each page's own <style> block.
+
+   WHY A SEPARATE FILE
+   Every page carries its own large inline <style>. Adding motion to
+   nine of those means nine places to keep in step, and nine chances for
+   them to drift. This is one file, additive only: it sets no widths, no
+   paddings and no colours that the pages don't already define, so
+   deleting the <link> restores the previous appearance exactly.
+
+   WHAT IT DOES NOT DO
+   No new palette, no new typefaces, no layout changes. The identity —
+   UP maroon, the yellow accent, Inter, the radius and shadow scale —
+   already exists in the token block on each page and is used as-is.
+   This is polish on a working portal that people use to check whether
+   they have been paid; it is not a place for spectacle.
+
+   ACCESSIBILITY
+   Everything here is inside a prefers-reduced-motion guard or is a
+   static state change (focus rings, hover colour). Someone with motion
+   sensitivity gets the full interface with none of the movement.
+   ===================================================================== */
+
+/* ------------------------------------------------------------------
+   1. Focus. Before anything decorative — a keyboard user needs to see
+   where they are, and :focus-visible keeps the ring off mouse clicks.
+   ------------------------------------------------------------------ */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--maroon, #7b1113);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs, 8px);
+}
+
+/* The nav sits on maroon, where a maroon ring is invisible. */
+nav :where(a, button):focus-visible {
+  outline-color: var(--yellow, #f5b041);
+}
+
+/* ------------------------------------------------------------------
+   2. Page entrance.
+   One orchestrated sequence rather than scattered effects: the header
+   settles, then cards arrive in the order they are read. Deliberately
+   short — this runs every time somebody opens their statement, and an
+   animation you notice twice is an animation that is too long.
+   ------------------------------------------------------------------ */
+@keyframes ui-rise {
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes ui-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  nav {
+    animation: ui-fade 0.4s var(--ease-out, ease) both;
+  }
+
+  main > *,
+  .card,
+  .panel,
+  .auth-card {
+    animation: ui-rise 0.5s var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  }
+
+  /* Stagger, capped at six. Beyond that the last card would wait long
+     enough to read as a delay rather than a sequence. */
+  main > *:nth-child(1), .card:nth-child(1) { animation-delay: 0.04s; }
+  main > *:nth-child(2), .card:nth-child(2) { animation-delay: 0.08s; }
+  main > *:nth-child(3), .card:nth-child(3) { animation-delay: 0.12s; }
+  main > *:nth-child(4), .card:nth-child(4) { animation-delay: 0.16s; }
+  main > *:nth-child(5), .card:nth-child(5) { animation-delay: 0.20s; }
+  main > *:nth-child(n+6), .card:nth-child(n+6) { animation-delay: 0.24s; }
+}
+
+/* ------------------------------------------------------------------
+   3. Cards. A small lift on hover, and a shadow that deepens rather
+   than a border that appears — the card already has a border, and
+   changing it shifts the layout by a pixel.
+   ------------------------------------------------------------------ */
+.card {
+  transition:
+    transform 0.25s var(--ease-out, ease),
+    box-shadow 0.25s var(--ease-out, ease),
+    border-color 0.25s var(--ease, ease);
+  will-change: transform;
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg, 0 12px 40px rgba(92, 13, 15, 0.12));
+  }
+}
+
+/* Touch devices get the shadow without the lift: there is no hover to
+   leave, so a raised card would simply stay raised. */
+@media (hover: none) {
+  .card:active { box-shadow: var(--shadow-lg, 0 12px 40px rgba(92, 13, 15, 0.12)); }
+}
+
+/* ------------------------------------------------------------------
+   4. Buttons. Press feedback matters more than hover here — most of
+   these are consequential (Approve, Reject, Delete) and the person
+   needs to know the click registered.
+   ------------------------------------------------------------------ */
+:where(button, .btn, input[type="submit"]) {
+  transition:
+    transform 0.12s var(--ease, ease),
+    box-shadow 0.2s var(--ease, ease),
+    background-color 0.2s var(--ease, ease),
+    opacity 0.2s var(--ease, ease);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :where(button, .btn, input[type="submit"]):not(:disabled):active {
+    transform: translateY(1px) scale(0.985);
+  }
+}
+
+:where(button, .btn):disabled {
+  cursor: not-allowed;
+}
+
+/* ------------------------------------------------------------------
+   5. Nav links. A yellow rule that grows from the left, matching the
+   yellow already used to mark the current page.
+   ------------------------------------------------------------------ */
+nav .links > a {
+  position: relative;
+  transition: color 0.2s var(--ease, ease);
+}
+
+nav .links > a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  height: 2px;
+  width: 100%;
+  background: var(--yellow, #f5b041);
+  border-radius: 2px;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.25s var(--ease-out, ease);
+}
+
+@media (hover: hover) {
+  nav .links > a:hover::after { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  nav .links > a::after { transition: none; }
+}
+
+/* ------------------------------------------------------------------
+   6. Tables. Statements are the reason this portal exists, and they
+   are read across, so the row under the cursor is highlighted whole.
+   ------------------------------------------------------------------ */
+tbody tr {
+  transition: background-color 0.15s var(--ease, ease);
+}
+
+@media (hover: hover) {
+  tbody tr:hover {
+    background-color: var(--maroon-soft, rgba(123, 17, 19, 0.08));
+  }
+}
+
+/* New rows arriving from a live refresh fade in, so a statement that
+   updates while being read does not appear to jump. */
+@media (prefers-reduced-motion: no-preference) {
+  tbody tr { animation: ui-fade 0.3s var(--ease, ease) both; }
+}
+
+/* ------------------------------------------------------------------
+   7. Inputs. A soft ring on focus, using the token the rest of the
+   interface already uses for the same idea.
+   ------------------------------------------------------------------ */
+:where(input, textarea, select) {
+  transition:
+    border-color 0.2s var(--ease, ease),
+    box-shadow 0.2s var(--ease, ease),
+    background-color 0.2s var(--ease, ease);
+}
+
+/* ------------------------------------------------------------------
+   8. Loading. A shimmer for anything marked .is-loading, so a slow
+   query looks like work in progress rather than an empty screen.
+   Opt-in: add the class, remove it when the data lands.
+   ------------------------------------------------------------------ */
+@keyframes ui-shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+.is-loading {
+  background-image: linear-gradient(
+    90deg,
+    var(--surface, rgba(123, 17, 19, 0.04)) 25%,
+    rgba(255, 255, 255, 0.65) 50%,
+    var(--surface, rgba(123, 17, 19, 0.04)) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--radius-xs, 8px);
+  color: transparent !important;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .is-loading { animation: ui-shimmer 1.4s linear infinite; }
+}
+
+/* ------------------------------------------------------------------
+   9. Images. Fade in once decoded, so a photograph does not snap into
+   place and shift the text around it.
+   ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  .news-item img,
+  .news-admin-thumb,
+  .event-thumb {
+    animation: ui-fade 0.35s var(--ease, ease) both;
+  }
+}
+
+/* ------------------------------------------------------------------
+   10. Dropdowns and dialogs already have their own show/hide rules on
+   each page. Only the easing is unified here, so every overlay on the
+   site opens at the same speed.
+   ------------------------------------------------------------------ */
+.profile-dropdown,
+.modal,
+.dialog {
+  transition:
+    opacity 0.2s var(--ease-out, ease),
+    transform 0.2s var(--ease-out, ease),
+    visibility 0.2s var(--ease-out, ease);
+}
+
+/* ------------------------------------------------------------------
+   11. Scrolling. Anchor jumps ease rather than teleport — but only
+   for people who have not asked for less motion.
+   ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
+/* ------------------------------------------------------------------
+   12. Print. A statement is a document people file and hand over.
+   Nothing here should follow it onto paper.
+   ------------------------------------------------------------------ */
+@media print {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+  .is-loading { background-image: none; color: inherit !important; }
+}
+
+/* ------------------------------------------------------------------
+   13. The global stop. Any movement not already inside a
+   no-preference guard is cancelled here, so a rule added later
+   without one still respects the setting.
+   ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

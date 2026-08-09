@@ -120,9 +120,6 @@
     document.getElementById("adminSection").appendChild(availableCard);
   }
 
-  // Wrapped in a named function so the live-refresh watcher below can
-  // re-run exactly what ran on load, rather than duplicating the query.
-  async function loadAvailable() {
   try {
     // available_transactions.user_email holds a comma-separated list
     // on some rows — one payment, several contact addresses at the
@@ -168,280 +165,22 @@
     console.error("Failed to load available_transactions:", e);
     availableBody.innerHTML = '<tr><td colspan="7" class="empty">Couldn\'t load transactions right now.</td></tr>';
   }
-  }
-
-  await loadAvailable();
-
-  // Cheques released while the dashboard is open should appear without
-  // the person having to reload. watchDatasets() is in config.js.
-  watchDatasets(["available_transactions"], loadAvailable);
 
   const newsList = document.getElementById("newsList");
-
-  // Pulled out of the inline block below so the admin composer can
-  // repaint the public list after posting, editing or deleting --
-  // without the person having to reload to see their own change.
-  async function renderNews() {
-    try {
-      const news = await fetchNews(5);
-
-      // One request for every image on the list, not one each. Cached
-      // by path, so a repaint after posting costs nothing.
-      const urlMap = await newsImageUrls(news.map(n => n.image_path));
-      const urls = news.map(n => urlMap.get(n.image_path) || null);
-
-      newsList.innerHTML = news.length
-        ? news.map((n, i) => `
-            <div class="news-item">
-              <time class="news-date">${formatTimestamp(n.created_at)}</time>
-              <h3>${escapeHtml(n.title)}</h3>
-              <p>${escapeHtml(n.content)}</p>
-              ${urls[i] ? `<img src="${escapeHtml(urls[i])}" alt="">` : ""}
-            </div>
-          `).join("")
-        : '<p class="empty">No news to show right now.</p>';
-    } catch (e) {
-      console.error("Failed to load news:", e);
-      newsList.innerHTML = '<p class="empty">Couldn\'t load news right now.</p>';
-    }
-  }
-
-  await renderNews();
-
-  // ------------------------------------------------------------
-  // Post News — administrators only.
-  //
-  // Hiding the card for non-admins is a courtesy, not the control:
-  // news_admin_write says is_admin() for both USING and WITH CHECK, so
-  // a non-admin who called addNews() from the console gets a policy
-  // error. The card is hidden because showing a button that always
-  // fails is worse than not showing it.
-  // ------------------------------------------------------------
-  if (isAdmin) {
-    const titleEl   = document.getElementById("newsTitle");
-    const contentEl = document.getElementById("newsContent");
-    const countEl   = document.getElementById("newsCount");
-    const noteEl    = document.getElementById("newsNote");
-    const saveBtn   = document.getElementById("newsSave");
-    const cancelBtn = document.getElementById("newsCancel");
-    const adminList = document.getElementById("newsAdminList");
-
-    const fileEl    = document.getElementById("newsImage");
-    const fileName  = document.getElementById("newsImageName");
-    const clearBtn  = document.getElementById("newsImageClear");
-    const previewEl = document.getElementById("newsImagePreview");
-
-    // null = composing a new item; a uuid = editing that one.
-    let editingId = null;
-    // The path already stored on the item being edited. Kept so an edit
-    // that does not touch the picker leaves the existing image alone.
-    let editingImagePath = null;
-    let editingThumbData = null;
-    // Object URL for a freshly picked file, revoked when replaced --
-    // otherwise every pick leaks a blob for the life of the page.
-    let previewUrl = null;
-
-    function setPreview(url) {
-      if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
-      if (url) {
-        previewEl.src = url;
-        previewEl.style.display = "";
-        clearBtn.style.display = "";
-      } else {
-        previewEl.removeAttribute("src");
-        previewEl.style.display = "none";
-        clearBtn.style.display = "none";
-      }
-    }
-
-    function say(message, kind) {
-      noteEl.textContent = message || "";
-      noteEl.className = "news-note" + (kind ? " " + kind : "");
-    }
-
-    function updateCount() {
-      const n = contentEl.value.length;
-      countEl.textContent = n + " / 2000";
-      countEl.className = "news-count" + (n > 2000 ? " over" : "");
-    }
-
-    function resetForm() {
-      editingId = null;
-      editingImagePath = null;
-      editingThumbData = null;
-      titleEl.value = "";
-      contentEl.value = "";
-      fileEl.value = "";
-      fileName.textContent = "No image";
-      setPreview(null);
-      saveBtn.textContent = "Post";
-      cancelBtn.style.display = "none";
-      updateCount();
-      renderAdminList();
-    }
-
-    async function beginEdit(item) {
-      editingId = item.id;
-      editingImagePath = item.image_path || null;
-      editingThumbData = item.thumb_data || null;
-      titleEl.value = item.title || "";
-      contentEl.value = item.content || "";
-      fileEl.value = "";
-
-      if (editingImagePath) {
-        fileName.textContent = "Current image";
-        setPreview(await newsImageUrl(editingImagePath));
-      } else {
-        fileName.textContent = "No image";
-        setPreview(null);
-      }
-
-      saveBtn.textContent = "Save changes";
-      cancelBtn.style.display = "";
-      updateCount();
-      say("Editing an existing item.", null);
-      renderAdminList();
-      titleEl.focus();
-    }
-
-    // Rebuilt from scratch each time rather than patched in place: the
-    // list is at most NEWS_LIMIT rows, and a full repaint cannot drift
-    // out of step with the database the way incremental edits do.
-    async function renderAdminList() {
-      try {
-        const items = await fetchNews(20);
-        if (!items.length) {
-          adminList.innerHTML = '<p class="empty">Nothing posted yet.</p>';
-          return;
-        }
-        // Inline thumbnail first; only fall back to signing for rows
-        // predating thumb_data.
-        const needSigning = items.filter(n => n.image_path && !n.thumb_data).map(n => n.image_path);
-        const thumbMap = needSigning.length ? await newsImageUrls(needSigning) : new Map();
-        const thumbs = items.map(n => n.thumb_data || thumbMap.get(n.image_path) || null);
-        adminList.innerHTML = items.map((n, i) => `
-          <div class="news-admin-item${n.id === editingId ? " editing" : ""}">
-            ${thumbs[i] ? `<img class="news-admin-thumb" src="${escapeHtml(thumbs[i])}" alt="" width="44" height="44" loading="lazy" decoding="async">` : ""}
-            <div class="news-admin-text">
-              <strong>${escapeHtml(n.title)}</strong>
-              <span>${escapeHtml(n.content)}</span>
-            </div>
-            <span class="news-admin-date">${formatTimestamp(n.created_at)}</span>
-            <div class="news-admin-btns">
-              <button type="button" data-news-edit="${escapeHtml(n.id)}">Edit</button>
-              <button type="button" data-news-del="${escapeHtml(n.id)}">Delete</button>
-            </div>
+  try {
+    const news = await fetchNews(5);
+    newsList.innerHTML = news.length
+      ? news.map(n => `
+          <div class="news-item">
+            <h3>${escapeHtml(n.title)}</h3>
+            <p>${escapeHtml(n.content)}</p>
           </div>
-        `).join("");
-      } catch (e) {
-        console.error("Failed to load news for admin list:", e);
-        adminList.innerHTML = '<p class="empty">Couldn\'t load the list.</p>';
-      }
-    }
-
-    // One delegated listener rather than one per button: the list is
-    // re-rendered constantly, and per-button handlers would leak with
-    // every repaint.
-    adminList.addEventListener("click", async (ev) => {
-      const editBtn = ev.target.closest("[data-news-edit]");
-      const delBtn  = ev.target.closest("[data-news-del]");
-
-      if (editBtn) {
-        const items = await fetchNews(20);
-        const item = items.find(n => n.id === editBtn.getAttribute("data-news-edit"));
-        if (item) await beginEdit(item);
-        return;
-      }
-
-      if (delBtn) {
-        const id = delBtn.getAttribute("data-news-del");
-        if (!window.confirm("Delete this news item? This cannot be undone.")) return;
-        delBtn.disabled = true;
-        try {
-          const items = await fetchNews(20);
-          const item = items.find(n => n.id === id);
-          await deleteNews(id, item ? item.image_path : null);
-          if (editingId === id) resetForm();
-          say("Deleted.", "ok");
-          await renderAdminList();
-          await renderNews();
-        } catch (e) {
-          console.error("Failed to delete news:", e);
-          say("Couldn't delete that item.", "error");
-          delBtn.disabled = false;
-        }
-      }
-    });
-
-    fileEl.addEventListener("change", () => {
-      const f = fileEl.files && fileEl.files[0];
-      if (!f) { fileName.textContent = editingImagePath ? "Current image" : "No image"; return; }
-      fileName.textContent = f.name;
-      setPreview(URL.createObjectURL(f));
-      previewUrl = previewEl.src;
-      say("", null);
-    });
-
-    // Clears a picked file, and marks an existing image for removal on
-    // save by dropping the remembered path.
-    clearBtn.addEventListener("click", () => {
-      fileEl.value = "";
-      editingImagePath = null;
-      editingThumbData = null;
-      fileName.textContent = "No image";
-      setPreview(null);
-    });
-
-    contentEl.addEventListener("input", updateCount);
-    cancelBtn.addEventListener("click", () => { resetForm(); say("", null); });
-
-    saveBtn.addEventListener("click", async () => {
-      saveBtn.disabled = true;
-      say("Saving…", null);
-      try {
-        const picked = fileEl.files && fileEl.files[0];
-        let imagePath = editingImagePath;
-
-        let thumbData = editingThumbData;
-
-        if (picked) {
-          say("Uploading image…", null);
-          // Thumbnail first: it is local canvas work, so if it fails the
-          // upload has not happened yet and nothing is orphaned.
-          thumbData = await makeThumbData(picked);
-          imagePath = await uploadNewsImage(picked);
-        }
-
-        if (editingId) {
-          await updateNews(editingId, titleEl.value, contentEl.value, imagePath, thumbData);
-          // Only once the row points at the new object. Reversing this
-          // would delete the old image and then, on a failed update,
-          // leave the item pointing at nothing.
-          if (picked && editingImagePath && editingImagePath !== imagePath) {
-            await deleteNewsImage(editingImagePath);
-          }
-          say("Changes saved.", "ok");
-        } else {
-          await addNews(titleEl.value, contentEl.value, imagePath, thumbData);
-          say("Posted.", "ok");
-        }
-        resetForm();
-        await renderNews();
-      } catch (e) {
-        console.error("Failed to save news:", e);
-        // addNews/updateNews raise plain Error for the validation cases,
-        // so their wording is worth showing. A PostgREST error is not.
-        say(e && e.message && !e.code ? e.message : "Couldn't save that. Try again.", "error");
-      } finally {
-        saveBtn.disabled = false;
-      }
-    });
-
-    updateCount();
-    await renderAdminList();
+        `).join("")
+      : '<p class="empty">No news to show right now.</p>';
+  } catch (e) {
+    console.error("Failed to load news:", e);
+    newsList.innerHTML = '<p class="empty">Couldn\'t load news right now.</p>';
   }
-
-  // eslint-disable-next-line no-constant-condition
 
   // --- INTERACTIVE CALENDAR ENGINE ---
   let currentDisplayDate = new Date();
@@ -494,7 +233,6 @@
     if (!monthIsLoaded(currentDisplayDate)) {
       try {
         await loadCalendarWindow(currentDisplayDate);
-        prewarmEventImages();
       } catch (e) {
         console.error("Failed to load calendar events:", e);
       }
@@ -576,12 +314,7 @@
       html += `
         <ul class="event-list">
           ${events.map(e => `
-            <li class="event-list-item" data-event-id="${escapeHtml(e.id)}">
-              ${e.thumb_data
-                  ? `<img class="event-thumb" src="${escapeHtml(e.thumb_data)}" alt="" width="32" height="32" decoding="async">`
-                  : e.image_path
-                    ? `<img class="event-thumb" data-img-for="${escapeHtml(e.id)}" alt="" width="32" height="32" loading="lazy" decoding="async">`
-                    : ''}
+            <li class="event-list-item">
               <span class="event-list-title">${escapeHtml(e.title)}</span>
               ${isAdmin ? `<button type="button" class="event-del-btn" data-id="${escapeHtml(e.id)}">Delete</button>` : ''}
             </li>
@@ -598,59 +331,13 @@
           <input type="text" id="newEventTitle" placeholder="Add event title…" maxlength="200" required>
           <button type="submit">Add</button>
         </form>
-        <div class="event-image-row">
-          <label class="news-image-pick" for="newEventImage">Add preview</label>
-          <input id="newEventImage" type="file"
-                 accept="image/jpeg,image/png,image/webp,image/gif">
-          <span class="news-image-name" id="newEventImageName">No image</span>
-          <button type="button" class="news-image-clear" id="newEventImageClear" style="display:none;">Remove</button>
-        </div>
       `;
     }
 
     calDetails.innerHTML = html;
 
-    // One batched call for the whole day, not one per image -- and
-    // normally a cache hit costing no request at all, because
-    // prewarmEventImages() has already signed this month.
-    //
-    // Still after the panel paints: the first visit to a month may
-    // genuinely need the network, and the day panel should never wait on
-    // a thumbnail. The <img> has no src until this resolves, so a
-    // failure leaves a gap rather than a broken-image icon.
-    // Only rows with no inline thumbnail need signing -- events created
-    // before thumb_data existed. Anything with thumb_data has already
-    // painted, from data that arrived with the row.
-    const withImages = events.filter(e => e.image_path && !e.thumb_data);
-    if (withImages.length) {
-      newsImageUrls(withImages.map(e => e.image_path)).then(urls => {
-        withImages.forEach(e => {
-          const url = urls.get(e.image_path);
-          const el = calDetails.querySelector(`[data-img-for="${CSS.escape(String(e.id))}"]`);
-          // Re-checked because the panel may have been replaced by
-          // another date click while this was in flight.
-          if (url && el) el.src = url;
-        });
-      });
-    }
-
     if (isAdmin) {
       const addForm = document.getElementById("addEventForm");
-      const evtFile = document.getElementById("newEventImage");
-      const evtName = document.getElementById("newEventImageName");
-      const evtClear = document.getElementById("newEventImageClear");
-
-      evtFile.addEventListener("change", () => {
-        const f = evtFile.files && evtFile.files[0];
-        evtName.textContent = f ? f.name : "No image";
-        evtClear.style.display = f ? "" : "none";
-      });
-
-      evtClear.addEventListener("click", () => {
-        evtFile.value = "";
-        evtName.textContent = "No image";
-        evtClear.style.display = "none";
-      });
       addForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const titleInput = document.getElementById("newEventTitle");
@@ -659,21 +346,13 @@
         const submitBtn = addForm.querySelector("button[type=submit]");
         submitBtn.disabled = true;
         try {
-          const picked = evtFile.files && evtFile.files[0];
-          const thumbData = picked ? await makeThumbData(picked) : null;
-          const imagePath = picked ? await uploadNewsImage(picked) : null;
-          const created = await addCalendarEvent(dateStr, title, imagePath, thumbData);
+          const created = await addCalendarEvent(dateStr, title);
           allEvents.push(created);
           renderCalendar();
           openDayPanel(dateStr);
         } catch (err) {
           console.error("Failed to add event:", err);
-          // uploadNewsImage() throws plain Error for the size and type
-          // cases, and that wording is worth showing. A PostgREST error
-          // carries a `code` and is not.
-          alert(err && err.message && !err.code
-            ? err.message
-            : "Couldn't add the event. You may not have admin permission, or the request failed — please try again.");
+          alert("Couldn't add the event. You may not have admin permission, or the request failed — please try again.");
           submitBtn.disabled = false;
         }
       });
@@ -684,8 +363,7 @@
           if (!confirm("Delete this event?")) return;
           btn.disabled = true;
           try {
-            const ev = allEvents.find(x => String(x.id) === String(id));
-            await deleteCalendarEvent(id, ev ? ev.image_path : null);
+            await deleteCalendarEvent(id);
             allEvents = allEvents.filter(ev => String(ev.id) !== String(id));
             renderCalendar();
             openDayPanel(dateStr);
@@ -703,19 +381,9 @@
     calDetails.innerHTML = '<span class="empty">Click any date to view or add events.</span>';
   }
 
-  // Signs every image in the loaded window in one request, so opening a
-  // day panel is a cache read rather than a round trip. Deliberately not
-  // awaited: the calendar is usable without thumbnails, and blocking the
-  // grid on them would trade a visible delay for an invisible one.
-  function prewarmEventImages() {
-    const paths = allEvents.filter(e => e.image_path && !e.thumb_data).map(e => e.image_path);
-    if (paths.length) newsImageUrls(paths).catch(() => {});
-  }
-
   try {
     await loadCalendarWindow(currentDisplayDate);
     renderCalendar();
-    prewarmEventImages();
   } catch (e) {
     console.error("Failed to load calendar events:", e);
     calGrid.innerHTML = '<p class="empty" style="grid-column: 1 / -1;">Couldn\'t load calendar right now.</p>';
@@ -732,23 +400,9 @@
   });
 })();
 
-// Calendar events only. event_date is a plain YYYY-MM-DD date, and the
-// "T00:00:00" is what stops the browser reading it as UTC midnight and
-// showing the day before east of Greenwich.
 function formatDate(iso) {
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-// news.created_at is a timestamptz, not a date. Passing it to
-// formatDate() above appends a second time component -- producing
-// "...+00:00T00:00:00", which is an Invalid Date. It already carries its
-// own offset, so it is parsed as-is and rendered in local time.
-function formatTimestamp(ts) {
-  if (!ts) return "";
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 const aiLauncher = document.getElementById("aiLauncher");

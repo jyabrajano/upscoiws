@@ -1630,11 +1630,6 @@ async function mountUserDirectory(container, onChanged) {
       const now = [d.to.full_name, d.to.account_number].filter(Boolean).join(" · ") || "—";
       return `${was} → ${now}`;
     }
-    // sync_email_change() writes from_email/to_email rather than
-    // from/to, because the branch above expects those to be objects
-    // carrying full_name and account_number, and an email change
-    // would render as "— → —".
-    if (d.from_email && d.to_email) return `${d.from_email} → ${d.to_email}`;
     if (d.reason) return `Reason: ${d.reason}`;
     if (d.note) return `Note: ${d.note}`;
     if (entry.account_number) return entry.account_number;
@@ -2087,11 +2082,6 @@ function logEntryDetail(entry) {
     const now = [d.to.full_name, d.to.account_number].filter(Boolean).join(" · ") || "—";
     return `${was} → ${now}`;
   }
-  // sync_email_change() writes from_email/to_email rather than
-  // from/to, because the branch above expects those to be objects
-  // carrying full_name and account_number, and an email change
-  // would render as "— → —".
-  if (d.from_email && d.to_email) return `${d.from_email} → ${d.to_email}`;
   if (d.reason) return `Reason: ${d.reason}`;
   if (d.note) return `Note: ${d.note}`;
   if (entry.account_number) return entry.account_number;

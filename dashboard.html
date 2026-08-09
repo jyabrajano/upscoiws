@@ -364,32 +364,142 @@
     box-shadow: 0 0 0 3px rgba(245, 176, 65, 0.25);
   }
 
+  /* ==================================================================
+     NEWS & UPDATES — bulletin treatment
+     ==================================================================
+     These entries are official notices from the Cash Office: work
+     suspensions, payroll schedules, system announcements. They used to
+     be styled as tinted callout boxes with a yellow tab, which is the
+     vocabulary of a tip or an aside — the visual language said "by the
+     way" about text that is frequently the opposite.
+     
+     What replaces it is a dated bulletin: a hairline between entries,
+     the date set in the same monospace the identity and calendar cards
+     use for matters of record, and the body copy in ink rather than
+     grey. No box, no tab, no coloured fill. Authority here comes from
+     restraint and from the date being the first thing read.
+
+     Every selector below targets markup page-dashboard.js already
+     emits — .news-date, h3, p, img inside .news-item. Nothing here
+     needs a change to the renderer.
+     ================================================================== */
+
+  /* Entries are separated, not enclosed. A rule between two notices
+     says they are equal items in a series; a box around each says they
+     are unrelated widgets that happen to be stacked. */
   .news-item {
-    padding: 14px 16px;
-    background: var(--surface);
-    border-left: 3px solid var(--yellow);
-    border-radius: var(--radius-sm);
-    margin-bottom: 12px;
-    transition:
-      background 0.25s var(--ease),
-      transform 0.25s var(--ease-out),
-      box-shadow 0.25s var(--ease),
-      border-color 0.2s var(--ease);
+    padding: 16px 0;
+    border-top: 1px solid var(--card-border);
+    transition: background 0.2s var(--ease);
   }
+  .news-item:first-child {
+    border-top: none;
+    padding-top: 2px;
+  }
+  .news-item:last-child {
+    padding-bottom: 2px;
+  }
+
+  /* On wide cards the date sits in its own column, the way a gazette
+     or a memorandum dates its entries down the left margin. :has()
+     guards it: an entry rendered without a .news-date — an older row,
+     a renderer that has not caught up — falls back to the stacked
+     layout instead of leaving an empty gutter. */
+  .news-item:has(.news-date) {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    column-gap: 18px;
+    align-items: start;
+  }
+  .news-item:has(.news-date) > .news-date { grid-column: 1; }
+  .news-item:has(.news-date) > :not(.news-date) { grid-column: 2; }
+
+  /* Hover is a tint that bleeds to the card's padding edge, so the
+     whole row lights up rather than a floating rectangle inside it.
+     No lift and no sideways slide — text that moves when you point at
+     it reads as playful, which is the wrong register for a notice
+     about a suspended workday. */
   .news-item:hover {
-    background: rgba(245, 176, 65, 0.14);
-    transform: translateX(4px);
-    box-shadow: 0 4px 14px rgba(245, 176, 65, 0.18);
-    border-left-color: var(--maroon);
+    background: var(--surface);
   }
+  @media (hover: hover) {
+    .news-item {
+      margin: 0 -10px;
+      padding-left: 10px;
+      padding-right: 10px;
+      border-radius: var(--radius-xs);
+    }
+  }
+
+  /* JetBrains Mono, matching the account number and the calendar
+     heading: on this page, monospace is what the interface uses for
+     things that are matters of record. Tabular figures keep the dates
+     aligned down the column. */
+  .news-date {
+    display: block;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+    color: var(--maroon);
+    margin-bottom: 4px;
+    padding-top: 2px;
+    white-space: nowrap;
+  }
+
   .news-item h3 {
     margin: 0;
-    font-size: 14.5px;
-    color: var(--ink);
+    font-size: 15.5px;
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    color: var(--maroon-dark);
   }
+
+  /* Ink, not muted. A notice is the text people came to read; grey is
+     for labels and captions around it. The measure is capped because a
+     full-width card can run past a comfortable line length. */
   .news-item p {
-    margin: 6px 0 0;
+    margin: 7px 0 0;
     font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--ink);
+    max-width: 68ch;
+    white-space: pre-line;
+  }
+
+  /* Masthead. h2.section-title is shared by every card on the page, so
+     this is scoped to #newsCard rather than changed globally — the
+     other cards are panels and should keep the lighter heading.
+
+     A double rule (the border plus the ::after hairline) is the oldest
+     signal there is for a masthead, and it costs one pseudo-element. */
+  #newsCard .section-title {
+    position: relative;
+    margin-bottom: 4px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--maroon);
+  }
+  #newsCard .section-title::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -5px;
+    height: 1px;
+    background: var(--maroon);
+    opacity: 0.45;
+  }
+
+  .news-attribution {
+    margin: 12px 0 14px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     color: var(--muted);
   }
 
@@ -555,31 +665,29 @@
     object-fit: contain; align-self: flex-start;
   }
 
-  /* Image on a published item, public list and admin list. */
-  /* Date line above the headline. .news-item h3 carries its own
-     margin, so this only needs to clear space beneath itself. */
-  .news-date {
-    display: block;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 4px;
-  }
+  /* Image on a published item, public list and admin list.
 
-  /* No max-height: the image fills the card's width and keeps its own
-     aspect ratio, so a tall image is tall. That is deliberate -- an
+     .news-date moved up into the bulletin block above. It was defined
+     here originally, which is LATER in the file than its new home, so
+     leaving it would have silently won on source order and undone the
+     restyle. Rules for one component belong in one place.
+
+     No max-height: the image fills the column and keeps its own aspect
+     ratio, so a tall image is tall. That is deliberate -- an
      announcement poster is meant to be read, not thumbnailed. If a
      portrait image ever pushes too much of the dashboard down, add
-     `max-height` here rather than resizing the source. */
+     `max-height` here rather than resizing the source.
+
+     The hairline and the small shadow read as a document reproduced on
+     the page rather than as decoration sitting on it. */
   .news-item img {
     display: block;
     max-width: 100%;
     height: auto;
-    margin-top: 8px;
+    margin-top: 12px;
     border-radius: var(--radius-xs);
     border: 1px solid var(--card-border);
+    box-shadow: var(--shadow-sm);
   }
   .news-admin-thumb {
     width: 44px; height: 44px; flex-shrink: 0;
@@ -1121,6 +1229,9 @@
   /* ========== PRINT STYLES ========== */
   @media print {
     @page { size: auto; margin: 12mm 10mm; }
+    /* A notice that breaks across a page mid-sentence stops looking
+       like a document. Keep each entry whole where the paper allows. */
+    .news-item { break-inside: avoid; page-break-inside: avoid; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     nav, .ai-launcher, .ai-widget, .profile-menu, .cal-header button, .add-event-form, .event-image-row, .news-form, .news-admin-list, .event-del-btn, #adminSection {
       display: none !important;
@@ -1167,6 +1278,14 @@
     .identity-name { font-size: 24px; letter-spacing: -0.4px; }
     .available-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .available-card table { min-width: 680px; }
+    /* The date column costs 84px plus its gutter, which is most of a
+       phone's usable measure. Below 768px the entry stacks and the date
+       goes back above the headline, where it started. */
+    .news-item:has(.news-date) { display: block; }
+    .news-item:has(.news-date) > .news-date,
+    .news-item:has(.news-date) > :not(.news-date) { grid-column: auto; }
+    .news-date { white-space: normal; padding-top: 0; }
+    .news-item p { max-width: none; }
     .available-card thead th, .available-card tbody td { padding: 10px 12px; font-size: 12px; }
     .available-card thead th { font-size: 10px; }
     .ai-launcher { bottom: 16px; right: 16px; width: 52px; height: 52px; }
@@ -1179,6 +1298,11 @@
     .available-card table { min-width: 620px; }
   }
 </style>
+
+<!-- Interaction layer. Loaded after this page's own styles so it
+     refines them rather than competing with them. Additive only:
+     removing this line restores the previous appearance exactly. -->
+<link rel="stylesheet" href="ui-polish.css">
 </head>
 <body>
   <nav>
@@ -1296,8 +1420,20 @@
       </table>
     </div>
 
-    <div class="card">
-      <h2 class="section-title">News & Updates</h2>
+    <!--
+      News & Updates. The id is what scopes the masthead rule below;
+      the card is otherwise an ordinary .card and inherits everything
+      else from it.
+
+      The attribution line is static text, not data. It says who the
+      notices come from, which is the single thing that most separates
+      an official announcement from a feed item, and it does not depend
+      on the renderer. Change the wording here if the office is named
+      differently in circulars.
+    -->
+    <div class="card" id="newsCard">
+      <h2 class="section-title">News &amp; Updates</h2>
+      <p class="news-attribution">Official announcements &mdash; U.P. System Cash Office</p>
       <div id="newsList"><p class="loading">Loading news…</p></div>
     </div>
 
