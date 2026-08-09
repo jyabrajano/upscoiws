@@ -208,12 +208,40 @@
 
   await renderNews();
 
+  // Both news views, in the order they are read.
+  //
+  // renderAdminList is declared inside the `if (isAdmin)` block further
+  // down. A function declaration in a block is only reachable from out
+  // here under sloppy-mode legacy semantics -- these files are classic
+  // scripts, so it works today, but it would become a ReferenceError
+  // the moment anything made them strict or turned them into modules.
+  // The typeof test costs nothing and does not care either way; it is
+  // also what covers the ordinary case of a non-admin, for whom the
+  // block never ran.
+  //
+  // The admin list used to be repainted only by the administrator who
+  // caused the change. With two people posting, the second one's item
+  // appeared in the public list below and not in the list of things you
+  // can edit -- which reads as the post having half-failed.
+  async function refreshNewsViews() {
+    await renderNews();
+    if (isAdmin && typeof renderAdminList === "function") await renderAdminList();
+  }
+
   // news_version_trg has been bumping data_versions since the table was
   // created, and nothing was listening. An administrator posting a
   // notice is exactly the case the indirection was built for: everyone
   // with the dashboard open sees it without reloading, and no news
   // content travels over the channel -- only a version number.
-  watchDatasets(["news"], renderNews);
+  //
+  // An administrator's own post therefore repaints twice: once directly
+  // from the save handler, once when the bump comes back. That is left
+  // alone deliberately. Suppressing the echo means guessing, from a
+  // timestamp, which bump was your own -- and a guess that is wrong in
+  // the other direction silently discards a colleague's post made in
+  // the same second. A duplicate repaint of five rows is the cheaper
+  // mistake, and it is the one that cannot lose anything.
+  watchDatasets(["news"], refreshNewsViews);
 
   // ------------------------------------------------------------
   // Post News — administrators only.

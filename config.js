@@ -303,6 +303,7 @@ let idleLastActivity = Date.now();
 let idleLastWrite = 0;
 let idleWatching = false;
 let idleWarningEl = null;
+let idlePoller = null;
 
 function idleReadLastActivity() {
   try {
@@ -393,6 +394,10 @@ function idleShowWarning(secondsLeft) {
 
 async function idleSignOut() {
   idleWatching = false;
+  // Held and cleared rather than left running behind the guard at the
+  // top of the callback. The guard is what made this harmless, not the
+  // design, and a timer nobody owns is one nobody can reason about.
+  if (idlePoller) { clearInterval(idlePoller); idlePoller = null; }
   idleDismissWarning();
   try { localStorage.removeItem(IDLE_KEY); } catch (_) {}
   try { await supabaseClient.auth.signOut(); } catch (_) {}
@@ -407,10 +412,29 @@ function startIdleWatch() {
   idleWatching = true;
   idleMarkActivity(true);
 
-  // pointerdown covers mouse, pen and touch in one. scroll and
-  // keydown catch reading and typing; visibilitychange catches
+  // pointerdown covers mouse, pen and touch in one. scroll, wheel and
+  // keydown catch reading and typing; visibilitychange, below, catches
   // returning to the tab, which is a real signal of presence.
-  ["pointerdown", "pointermove", "keydown", "scroll", "wheel", "focus"]
+  //
+  // Two events used to be in this list and are deliberately gone.
+  //
+  //   focus   was fatal. It was registered with capture: true, which on
+  //           window catches focus on any element, and idleShowWarning()
+  //           ends by calling stay.focus() on its own button. The dialog
+  //           therefore reset the clock it was counting down: the
+  //           warning appeared at four minutes, focused itself, elapsed
+  //           time went to zero, the next poll dismissed it, and the
+  //           cycle repeated. An unattended dashboard was never signed
+  //           out at all. Nothing is lost by dropping it -- focus is
+  //           always preceded by a pointerdown or a keydown, both of
+  //           which are still here.
+  //
+  //   pointermove  is not evidence that anyone is present. A drifting
+  //           optical mouse, a nudged desk, or a cursor sitting over
+  //           something that redraws all keep firing it. This control
+  //           exists for machines nobody is at, so an event a machine
+  //           can generate by itself cannot be allowed to feed it.
+  ["pointerdown", "keydown", "scroll", "wheel"]
     .forEach(evt => window.addEventListener(evt, () => idleMarkActivity(false),
                                             { passive: true, capture: true }));
 
@@ -418,7 +442,7 @@ function startIdleWatch() {
     if (!document.hidden) idleMarkActivity(true);
   });
 
-  setInterval(() => {
+  idlePoller = setInterval(() => {
     if (!idleWatching) return;
 
     const idleFor = Date.now() - idleReadLastActivity();
@@ -1621,6 +1645,20 @@ function watchDatasets(datasets, onChange) {
       seen.set(dataset, version);
       if (fireOnChange && had && version !== prev) fire(dataset);
     },
+    // Baseline only. Writes a version if this watcher has not seen the
+    // dataset at all, and otherwise leaves it alone.
+    //
+    // The distinction matters because the baseline query is no longer
+    // the first thing to touch `seen`. The channel is subscribed before
+    // it runs, so a bump can land mid-query -- and the shared 60s poll
+    // can too. Either would be overwritten by a baseline reading an
+    // older row, and the next real event would then look like a change
+    // that had already been handled. A first-write-wins prime cannot do
+    // that.
+    prime(dataset, version) {
+      if (stopped || !wanted.includes(dataset) || seen.has(dataset)) return;
+      seen.set(dataset, version);
+    },
   };
 
   dataVersionWatchers.add(watcher);
@@ -1630,7 +1668,17 @@ function watchDatasets(datasets, onChange) {
     dataVersionVisibilityBound = true;
   }
 
-  // Baseline first, so this watcher's first real change is measured
+  // Subscribe BEFORE the baseline read, not after. The old order left a
+  // window the length of one query in which a bump was neither in the
+  // baseline nor on a channel anybody was listening to, and a change
+  // that lands in that window is lost until the next one -- which for
+  // news might be days.
+  //
+  // Ordering it this way is only safe because prime() will not overwrite
+  // something the channel has already delivered.
+  ensureDataVersionChannel();
+
+  // The baseline exists so this watcher's first real change is measured
   // against something rather than treated as a change in itself. Only
   // this watcher is primed — a second caller registering later must not
   // silently swallow a change the first one had not seen yet.
@@ -1641,11 +1689,10 @@ function watchDatasets(datasets, onChange) {
         .select("dataset, version")
         .in("dataset", wanted);
       if (error) throw error;
-      (data || []).forEach(row => watcher.deliver(row.dataset, row.version, false));
+      (data || []).forEach(row => watcher.prime(row.dataset, row.version));
     } catch (err) {
       console.warn("[watchDatasets] couldn't read data_versions:", err);
     }
-    if (!stopped) ensureDataVersionChannel();
   })();
 
   return function stop() {
