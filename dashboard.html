@@ -372,16 +372,17 @@
      be styled as tinted callout boxes with a yellow tab, which is the
      vocabulary of a tip or an aside — the visual language said "by the
      way" about text that is frequently the opposite.
-     
+
      What replaces it is a dated bulletin: a hairline between entries,
      the date set in the same monospace the identity and calendar cards
      use for matters of record, and the body copy in ink rather than
      grey. No box, no tab, no coloured fill. Authority here comes from
      restraint and from the date being the first thing read.
 
-     Every selector below targets markup page-dashboard.js already
-     emits — .news-date, h3, p, img inside .news-item. Nothing here
-     needs a change to the renderer.
+     Every selector below targets markup renderNews() in
+     page-dashboard.js already emits — <time class="news-date">, h3, p
+     and an optional img inside .news-item. Nothing here needs a change
+     to the renderer.
      ================================================================== */
 
   /* Entries are separated, not enclosed. A rule between two notices
@@ -400,14 +401,17 @@
     padding-bottom: 2px;
   }
 
-  /* On wide cards the date sits in its own column, the way a gazette
-     or a memorandum dates its entries down the left margin. :has()
-     guards it: an entry rendered without a .news-date — an older row,
-     a renderer that has not caught up — falls back to the stacked
-     layout instead of leaving an empty gutter. */
+  /* On wide cards the date sits in its own column, the way a gazette or
+     a memorandum dates its entries down the left margin. The width is
+     set for the longest string formatTimestamp() produces — "Sept 30,
+     2026" — with the gutter kept generous so the two columns read as
+     separate.
+
+     :has() guards it: an entry rendered without a .news-date falls back
+     to the stacked layout instead of leaving an empty gutter. */
   .news-item:has(.news-date) {
     display: grid;
-    grid-template-columns: 84px minmax(0, 1fr);
+    grid-template-columns: 96px minmax(0, 1fr);
     column-gap: 18px;
     align-items: start;
   }
@@ -415,10 +419,10 @@
   .news-item:has(.news-date) > :not(.news-date) { grid-column: 2; }
 
   /* Hover is a tint that bleeds to the card's padding edge, so the
-     whole row lights up rather than a floating rectangle inside it.
-     No lift and no sideways slide — text that moves when you point at
-     it reads as playful, which is the wrong register for a notice
-     about a suspended workday. */
+     whole row lights up rather than a floating rectangle inside it. No
+     lift and no sideways slide — text that moves when you point at it
+     reads as playful, which is the wrong register for a notice about a
+     suspended workday. */
   .news-item:hover {
     background: var(--surface);
   }
@@ -459,8 +463,10 @@
   }
 
   /* Ink, not muted. A notice is the text people came to read; grey is
-     for labels and captions around it. The measure is capped because a
-     full-width card can run past a comfortable line length. */
+     for labels and captions around it. pre-line preserves the line
+     breaks an administrator typed in the composer — the content is
+     escaped, not marked up, so without it a three-paragraph
+     announcement collapses into one block. */
   .news-item p {
     margin: 7px 0 0;
     font-size: 13.5px;
@@ -672,14 +678,11 @@
      leaving it would have silently won on source order and undone the
      restyle. Rules for one component belong in one place.
 
-     No max-height: the image fills the column and keeps its own aspect
-     ratio, so a tall image is tall. That is deliberate -- an
+     No max-height: the image fills the card's width and keeps its own
+     aspect ratio, so a tall image is tall. That is deliberate -- an
      announcement poster is meant to be read, not thumbnailed. If a
      portrait image ever pushes too much of the dashboard down, add
-     `max-height` here rather than resizing the source.
-
-     The hairline and the small shadow read as a document reproduced on
-     the page rather than as decoration sitting on it. */
+     `max-height` here rather than resizing the source. */
   .news-item img {
     display: block;
     max-width: 100%;
@@ -1278,7 +1281,7 @@
     .identity-name { font-size: 24px; letter-spacing: -0.4px; }
     .available-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .available-card table { min-width: 680px; }
-    /* The date column costs 84px plus its gutter, which is most of a
+    /* The date column costs 96px plus its gutter, which is most of a
        phone's usable measure. Below 768px the entry stacks and the date
        goes back above the headline, where it started. */
     .news-item:has(.news-date) { display: block; }
@@ -1421,9 +1424,8 @@
     </div>
 
     <!--
-      News & Updates. The id is what scopes the masthead rule below;
-      the card is otherwise an ordinary .card and inherits everything
-      else from it.
+      News & Updates. The id is what scopes the masthead rule in the
+      style block; the card is otherwise an ordinary .card.
 
       The attribution line is static text, not data. It says who the
       notices come from, which is the single thing that most separates
