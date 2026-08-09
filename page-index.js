@@ -147,6 +147,8 @@ let refused = false;
 
 let signingIn = false;
 
+let asked = false;
+
 function clearStatus() {
   statusEl.textContent = "";
   statusEl.className = "status";
@@ -157,9 +159,9 @@ function refreshGate() {
   const password = passwordInput.value;
   const filled = Boolean(email && password);
   const badEmail = Boolean(email) && !EMAIL_RE.test(email);
-  emailInput.classList.toggle("is-invalid", touched.has(emailInput) && (!email || badEmail));
-  passwordInput.classList.toggle("is-invalid", touched.has(passwordInput) && !password);
-  submitBtn.disabled = signingIn || !filled || badEmail || refused;
+  emailInput.classList.toggle("is-invalid", asked && touched.has(emailInput) && (!email || badEmail));
+  passwordInput.classList.toggle("is-invalid", asked && touched.has(passwordInput) && !password);
+  submitBtn.disabled = signingIn || !filled || refused;
   if (signingIn) {
     gateEl.textContent = "";
     return;
@@ -169,7 +171,6 @@ function refreshGate() {
     return;
   }
   gateEl.textContent = "";
-  if (badEmail || refused) showStatus(DENIED, "error");
 }
 
 [ emailInput, passwordInput ].forEach(el => {
@@ -199,8 +200,17 @@ refreshResetGate();
 form.addEventListener("submit", async e => {
   e.preventDefault();
   if (submitBtn.disabled) return;
+  asked = true;
+  touched.add(emailInput);
+  touched.add(passwordInput);
   const email = emailInput.value.trim();
   const password = passwordInput.value;
+  if (!EMAIL_RE.test(email)) {
+    refused = true;
+    showStatus(DENIED, "error");
+    refreshGate();
+    return;
+  }
   signingIn = true;
   submitBtn.disabled = true;
   clearStatus();
