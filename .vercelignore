@@ -1,34 +1,32 @@
-# Belt and braces. These are already excluded by .gitignore, so they
-# should never reach the repo Vercel builds from — this file is what
-# catches the day one of them does, because a Vercel deploy publishes
-# the working tree and not just what git tracks.
+# Files in this repo that Vercel must not upload.
 #
-# deploy-schema.sql is the whole database design. Not a key — security
-# lives in the database, not in secrecy — but a free map for anyone
-# poking at the API.
-deploy-schema.sql
-patch-*.sql
-*.sql
+# Vercel serves the repo root as the web root, so anything committed
+# here is fetchable over HTTP unless it is listed below. That is fine
+# for the pages and their scripts, which the browser needs anyway. It
+# is not fine for the two things below.
 
-# Build scripts. They read config.js and rewrite the pages; they are
-# run before a deploy, never served by one.
+# Edge Function source. These run on Supabase, not Vercel, so serving
+# them achieves nothing -- and without this line the ai-assistant
+# system prompt and all three functions' authorization logic would sit
+# at https://<domain>/supabase/functions/<slug>/index.ts for anyone who
+# guessed the path. They contain no secrets (every key comes from
+# Deno.env), so this is not a breach waiting to happen; it is simply
+# not the public's business, and there is no reason to publish it.
+supabase/
+
+# Local tooling. Node scripts that read and rewrite the repo. They are
+# never fetched by a page and would only ever be served by accident.
+sync-sri.js
 sync-csp.js
 sync-vendor.js
-sync-sri.js
-vendor-lock.json
-sri-lock.json
+check-drift.js
+build-clean.js
 
-# Pasted into Supabase -> Authentication -> Email Templates. Never served.
-email-*.html
-
-# Apache config. Inert on Vercel — vercel.json is what applies here.
-# Shipping it invites someone to edit it and expect an effect.
-.htaccess
-_htaccess
-
+# The schema and its documentation. deploy-schema.sql is already kept
+# out of the public repo by .gitignore; this is the belt to that
+# braces, so a private-repo deploy does not quietly publish a full map
+# of the database and its RLS policies at /deploy-schema.sql.
+deploy-schema.sql
 README.md
-LEGAL-COMPLIANCE.md
-DEPLOY.txt
+VERCEL.md
 node_modules/
-.DS_Store
-Thumbs.db

@@ -37,22 +37,34 @@ node_modules/
 # the libraries without it leaves nothing to check them against, which
 # is most of the point — see sync-vendor.js.
 
-# ---- not in this repo, and needs to be ----
+# ---- Edge Functions: now in this repo ----
 #
-# Three Supabase Edge Functions are invoked by name from the client and
-# have no source here:
+# Three Supabase Edge Functions are invoked by name from the client.
+# They used to have no source here, which meant a deploy from this repo
+# alone produced a portal where approval emails silently failed,
+# deleting a user threw, and the assistant was dead -- three separate
+# faults that did not look related and none of which pointed here.
 #
-#   notify-approval    approval.js  — approval/rejection emails
-#   admin-delete-user  approval.js  — wraps admin_delete_user_data()
+# Recovered from the live project 2026-08-09 and committed under
+# supabase/functions/<slug>/index.ts:
+#
+#   notify-approval    approval.js  -- approval/rejection emails
+#   admin-delete-user  approval.js  -- wraps admin_delete_user_data()
 #                                     plus the Auth Admin API, neither
 #                                     of which belongs in the browser
-#   ai-assistant       page-dashboard.js — presumably the only caller
-#                                     of ai_assistant_take_token()
+#   ai-assistant       page-dashboard.js -- the chat panel
 #
-# They are not ignored; they were never added. A deploy from this repo
-# alone produces a portal where approval emails silently fail, deleting
-# a user throws, and the assistant is dead — three separate faults that
-# do not look related and none of which point here.
-#
-# They live in supabase/functions/<name>/index.ts. Add them, or write
-# down where they are kept instead.
+# All three read their keys from Deno.env. No secret is in the source
+# and none may be added: they are set with `supabase secrets set` and
+# live only in the function runtime. The patterns below keep the local
+# files those secrets land in from ever being committed.
+supabase/.env
+supabase/.env.*
+supabase/.temp/
+.env
+.env.*
+
+# ai-assistant does NOT call ai_assistant_take_token(), despite that
+# function existing, being granted to authenticated, and being the
+# only thing ai_assistant_usage is for. The rate limit is not in
+# force. See the Edge Functions section of README.md.
