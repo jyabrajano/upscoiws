@@ -6,39 +6,6 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="robots" content="noindex, nofollow">
 
-<!--
-  privacy.html — the privacy notice required by section 16 of the Data
-  Privacy Act of 2012 (RA 10173), which gives every data subject the
-  right to be informed before their personal data is processed.
-
-  ============================================================
-  THIS DOCUMENT IS A DRAFT AND MUST BE REVIEWED BEFORE LAUNCH
-  ============================================================
-
-  Every {{PLACEHOLDER}} below has to be filled in by the U.P. System
-  Cash Office together with the University Data Protection Office. A
-  privacy notice is a statement of what the University actually does
-  and who is actually accountable; nobody outside the office can supply
-  those facts, and a notice with invented contact details is worse than
-  none because it tells people to write to an address that ignores them.
-
-  The lawful basis stated below is section 12(c)/(e), NOT consent.
-  That is a deliberate choice and should be confirmed rather than
-  quietly changed: this portal exists so staff can be paid and can see
-  what they were paid. Treating that as consent-based would imply an
-  employee could withdraw consent and still expect the service, which
-  is not the arrangement, and would give them a right of withdrawal the
-  University cannot actually honour.
-
-  When the text changes materially, bump PRIVACY_NOTICE_VERSION in
-  config.js. Registration records which version each person
-  acknowledged, so a reissued notice can be re-acknowledged rather than
-  silently replaced.
-
-  Content Security Policy — ON. Keep this identical across all pages.
-  `node sync-csp.js` maintains the connect-src line and checks that no
-  inline script has crept in. This page has no script of its own.
--->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com;
@@ -178,11 +145,6 @@
     body { padding: 16px 10px 40px; }
   }
 </style>
-
-<!-- Interaction layer. Loaded after this page's own styles so it
-     refines them rather than competing with them. Additive only:
-     removing this line restores the previous appearance exactly. -->
-<link rel="stylesheet" href="ui-polish.css">
 </head>
 <body>
 
@@ -194,8 +156,6 @@
   </header>
 
   <main>
-    <!-- Remove this banner once the office and the UDPO have filled in
-         and approved the highlighted items. -->
     <div class="draft-banner">
       <strong>Draft — pending review</strong>
       Highlighted items still need to be confirmed by the U.P. System Cash Office and

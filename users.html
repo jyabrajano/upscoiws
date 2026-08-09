@@ -6,59 +6,6 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="robots" content="noindex, nofollow">
 
-<!--
-  Content Security Policy — ON.
-
-  It stops injected script from shipping what's typed here to an
-  address that isn't your Supabase project. It does NOT hide the
-  source; nothing served to a browser can be hidden.
-
-  Because it is on, this page no longer works opened straight off
-  disk (file:///...) — 'self' means nothing there and the page will
-  break. Serve it over http(s) to test:
-
-    npx --yes http-server . -p 8080
-
-  Send the same policy as a response header from your host as well
-  (Netlify _headers, Vercel vercel.json, nginx add_header) — a
-  header can also carry frame-ancestors, which a <meta> tag can't.
-
-  Keep this identical across every page listed in sync-csp.js's
-  PAGES array. The connect-src line is
-  generated -- run `node sync-csp.js` rather than editing it by hand,
-  and note that it now rewrites _htaccess too: a stale connect-src in
-  the response header is NOT overruled by a fresh one here. When both
-  a header and a <meta> policy are delivered the browser enforces BOTH,
-  and what applies is the intersection, so the older of the two wins
-  every disagreement.
-
-  script-src is now 'self' alone. It used to name cdn.jsdelivr.net,
-  which trusted every script on a public CDN in order to load two of
-  them. Both libraries are self-hosted under vendor/ instead -- run
-  `node sync-vendor.js` once before the first deploy, or every page
-  will fail to start.
-
-  script-src no longer carries 'unsafe-inline'. That is the whole
-  point of the page-*.js files: every page used to end in a several
-  hundred line inline <script>, and while one of those is on the page
-  the directive has to allow inline script, which is the same
-  permission an injected <script> needs. The directive was there
-  looking like a control and enforcing nothing against the attack it
-  names.
-
-  Two things will silently put that back. Adding an inline <script>
-  block anywhere in the file, and adding an onclick= (or any on*=)
-  attribute to any element -- CSP treats a handler attribute as inline
-  script, and neither a nonce nor a hash exempts it. Both fail closed:
-  the code simply does not run, and the browser console says so.
-  Attach a listener in the page's .js file instead.
-
-  style-src does still carry 'unsafe-inline', deliberately and
-  separately. Every page holds a large inline <style> block, and
-  config.js builds one more at runtime for the password toggles.
-  Removing it there is its own piece of work and buys much less --
-  inline style is not a script execution primitive.
--->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com;
@@ -108,7 +55,6 @@
 
   * { box-sizing: border-box; }
 
-  /* --- BODY WITH ENHANCED COLOR DESIGN --- */
   body {
     margin: 0;
     font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -138,7 +84,6 @@
     z-index: 0;
   }
 
-  /* --- MAIN HEADER (Matching SOA.html) --- */
   nav {
     position: relative;
     z-index: 10;
@@ -281,22 +226,8 @@
     font-style: italic;
   }
 
-  /* Every card on this page spans the full wrapper.
-
-     .wrap is a `2fr 1fr` grid above 800px, inherited from the
-     dashboard where a narrow second column earns its place. Nothing
-     here is a sidebar: the queues, the user search and the action log
-     are all wide tables and lists. Left as-is, the first card would
-     take the 2fr column and stop at about two thirds of the wrapper
-     while the ones below it ran full width, which reads as a
-     misaligned page rather than a deliberate layout.
-
-     approval.js already sets this for .admin-card. Stating it for
-     every card keeps the two queues and Manage Users the same width
-     without depending on which classes happen to be on which. */
   .wrap > .card { grid-column: 1 / -1; }
 
-  /* --- UPDATED TABLE STYLE MATCHING SOA.HTML --- */
   .available-card {
     grid-column: 1 / -1;
     overflow-x: auto;
@@ -323,7 +254,6 @@
     padding: 0 4px;
   }
 
-  /* --- Profile menu --- */
   .profile-menu { position: relative; }
   .profile-btn {
     display: flex;
@@ -421,8 +351,7 @@
   }
 </style>
 <style>
-  /* Page-specific: the rest of the styling above is dashboard.html's,
-     copied so the two pages can't drift apart visually. */
+
   .page-intro {
     font-size: 12.5px;
     line-height: 1.55;
@@ -436,7 +365,7 @@
     font-size: 14px;
     color: var(--muted);
   }
-  /* Tables */
+
   .table-scroll, #userDirectory {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -496,11 +425,6 @@
   }
 
 </style>
-
-<!-- Interaction layer. Loaded after this page's own styles so it
-     refines them rather than competing with them. Additive only:
-     removing this line restores the previous appearance exactly. -->
-<link rel="stylesheet" href="ui-polish.css">
 </head>
 <body>
   <nav>
@@ -512,8 +436,8 @@
       </div>
     </div>
     <div class="links">
-      <a href="dashboard.html">Home</a>
-      <a href="soa.html">Transaction History</a>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="soa.html">Statement of Account</a>
       <a href="users.html" id="usersLink" style="color: var(--yellow); font-weight:700; display:none;">Manage Users</a>
       <div class="profile-menu" id="profileMenu">
         <button type="button" class="profile-btn" id="profileBtn" aria-haspopup="true" aria-expanded="false">
@@ -534,43 +458,11 @@
   </nav>
 
   <div class="wrap" id="pageWrap" style="display:none;">
-    <!--
-      The two approval queues, moved here from dashboard.html. They sit
-      above Manage Users because that is the order the work happens in:
-      approve who is waiting, then go looking for someone specific.
-
-      No wrapper div around them on purpose. They need to be direct
-      children of .wrap to be grid items in their own right; nesting
-      them would make the pair a single cell and break the width match
-      with Manage Users below. There is nothing to gate them with
-      either -- this whole page redirects anyone who is not an
-      administrator before it renders.
-    -->
       <div class="card admin-card">
         <h2 class="section-title">
           Account Registrations
           <span class="queue-count" id="regCount">0</span>
         </h2>
-        <!--
-          Filters the pending list that is already on screen. The whole
-          queue arrives in one admin_pending_queue() call, so this is a
-          browser-side narrowing of rows already in memory — no round
-          trip, and no way for it to disagree with what the badge counts.
-
-          The suggestion list is drawn from that same in-memory queue,
-          so it can only ever offer people who are genuinely waiting.
-          It is an accelerator, not a gate: typing filters the list
-          whether or not a suggestion is ever chosen.
-
-          This used to start hidden and be revealed by approval.js only
-          when at least one registration was waiting — the idea being
-          not to put a search box over an empty queue. That was a bad
-          trade. It meant the control was invisible exactly when an
-          administrator went looking to see whether it existed, and
-          indistinguishable from a broken deploy. A filter over an
-          empty list costs nothing; a filter that vanishes costs a
-          bug report.
-        -->
         <div class="queue-filter" id="regFilter">
           <div class="queue-filter-field">
             <input type="text" data-role="query" autocomplete="off"
@@ -604,13 +496,6 @@
       <div id="userDirectory"></div>
     </div>
 
-    <!--
-      Main administrators only. mountActionLog() hides this whole card
-      for anyone else rather than showing a search box that can only
-      return "not authorized" — admin_action_log() refuses in the
-      database, and the admin_actions RLS policy refuses again behind
-      it, so the hiding is courtesy rather than control.
-    -->
     <div class="card" id="actionLogCard" style="display:none;">
       <h2 class="section-title">Action Log</h2>
       <p class="page-intro">

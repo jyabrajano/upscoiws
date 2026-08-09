@@ -14,14 +14,9 @@
 
 # ---- security headers ----
 <IfModule mod_headers.c>
-  # The connect-src AND img-src directives below are GENERATED.
-  # `node sync-csp.js` reads SUPABASE_URL out of config.js and rewrites
-  # both here as well as in the nine pages — do not edit them by hand.
-  #
-  # img-src names the project because the news-images Storage bucket is
-  # private: its images arrive as signed URLs from the project host, not
-  # as public asset URLs, so 'self' does not cover them. `data:` stays
-  # for inline thumbnails and the UP seal.
+  # The connect-src line below is GENERATED. `node sync-csp.js` reads
+  # SUPABASE_URL out of config.js and rewrites it here as well as in
+  # the nine pages — do not edit it by hand.
   #
   # It did not always cover this file, and the omission was worse than
   # it looks. When a response header and a <meta> tag both carry a CSP,
@@ -38,27 +33,12 @@
   # why the page-*.js files exist. Do not add it back to make an
   # inline script work; move the script into the page's .js file.
   #
-  # THIS IS THE CDN BUILD. script-src names cdn.jsdelivr.net and
-  # cdn.sheetjs.com because the pages load supabase-js and xlsx from
-  # them directly, at pinned versions, with an integrity= hash on each
-  # tag (run `node sync-sri.js` to generate or re-check those hashes).
-  # vendor/ does not exist in this snapshot and sync-vendor.js is not
-  # wired to anything — see the build note in .gitignore, which is the
-  # file that says which of the two builds you are looking at.
-  #
-  # This comment used to claim the opposite: that the CDN origins were
-  # gone and both libraries came from vendor/. They never did in this
-  # snapshot, and the line directly below said so the whole time. A
-  # comment that contradicts the config six lines under it is worse
-  # than no comment, because the next person reasons from it — reads
-  # "script-src is 'self' alone", concludes a CDN tag cannot possibly
-  # execute, and stops looking.
-  #
-  # If you finish the move to vendor/: drop both origins from this
-  # line AND from the nine <meta> tags, and drop the integrity=
-  # attributes with them. The intersection rule above means missing
-  # one of the ten is not a partial failure, it is a total one.
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://xgcdbtahappoqegheitd.supabase.co; connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+  # It no longer names cdn.jsdelivr.net either: supabase-js and xlsx
+  # are served from vendor/ on this host. See sync-vendor.js. If you
+  # ever go back to a CDN, this line and the nine <meta> tags all have
+  # to name it — the intersection rule above means missing one is not
+  # a partial failure, it is a total one.
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 
   Header always set X-Frame-Options "DENY"
   Header always set X-Content-Type-Options "nosniff"

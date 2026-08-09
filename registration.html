@@ -8,67 +8,6 @@
 <title>Create an Account — U.P. System Cash Office</title>
 <link rel="icon" type="image/png" href="UPSeal.png">
 
-<!--
-  Content Security Policy — ON.
-
-  It stops injected script from shipping what's typed here to an
-  address that isn't your Supabase project. It does NOT hide the
-  source; nothing served to a browser can be hidden.
-
-  Because it is on, this page no longer works opened straight off
-  disk (file:///...) — 'self' means nothing there and the page will
-  break. Serve it over http(s) to test:
-
-    npx --yes http-server . -p 8080
-
-  Send the same policy as a response header from your host as well
-  (Netlify _headers, Vercel vercel.json, nginx add_header) — a
-  header can also carry frame-ancestors, which a <meta> tag can't.
-
-  Keep this identical across every page listed in sync-csp.js's
-  PAGES array. The connect-src line is
-  generated -- run `node sync-csp.js` rather than editing it by hand,
-  and note that it now rewrites _htaccess too: a stale connect-src in
-  the response header is NOT overruled by a fresh one here. When both
-  a header and a <meta> policy are delivered the browser enforces BOTH,
-  and what applies is the intersection, so the older of the two wins
-  every disagreement.
-
-  script-src names two CDN origins. This is the ROLLBACK build: both
-  libraries load from the CDN at a pinned version, so no vendor/ folder
-  is needed and the site works on upload alone.
-
-  This is a stopgap, not the target. Naming an origin in script-src
-  trusts every script on it, not the two wanted. The self-hosted build
-  (script-src 'self' alone, libraries under vendor/) is the one to get
-  back to once `node sync-vendor.js` has been run successfully -- see
-  sync-vendor.js in the full project archive.
-
-  What this build does keep is the version pin. The original tag was
-  @2, a floating major: whatever the CDN served at page-load time ran
-  with full privileges. @2.112.1 does not move on its own.
-
-  script-src no longer carries 'unsafe-inline'. That is the whole
-  point of the page-*.js files: every page used to end in a several
-  hundred line inline <script>, and while one of those is on the page
-  the directive has to allow inline script, which is the same
-  permission an injected <script> needs. The directive was there
-  looking like a control and enforcing nothing against the attack it
-  names.
-
-  Two things will silently put that back. Adding an inline <script>
-  block anywhere in the file, and adding an onclick= (or any on*=)
-  attribute to any element -- CSP treats a handler attribute as inline
-  script, and neither a nonce nor a hash exempts it. Both fail closed:
-  the code simply does not run, and the browser console says so.
-  Attach a listener in the page's .js file instead.
-
-  style-src does still carry 'unsafe-inline', deliberately and
-  separately. Every page holds a large inline <style> block, and
-  config.js builds one more at runtime for the password toggles.
-  Removing it there is its own piece of work and buys much less --
-  inline style is not a script execution primitive.
--->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com;
@@ -269,7 +208,6 @@
 
   .field input::placeholder { color: #94a3b8; }
 
-  /* Locked / Read-only styling for Full Name */
   #fullName {
     text-transform: uppercase;
     background-color: #f1f5f9;
@@ -316,11 +254,7 @@
     opacity: 0.65;
     cursor: not-allowed;
   }
-  /* ----------------------------- */
 
-  /* Privacy notice acknowledgement — RA 10173 s.16 (right to be
-     informed). Not a consent checkbox: see privacy.html for why the
-     lawful basis here is 12(c)/(e) rather than consent. */
   .privacy-ack {
     display: flex;
     align-items: flex-start;
@@ -413,7 +347,6 @@
     letter-spacing: 0.3px;
   }
 
-  /* ---- account number list (up to 3) ---- */
   .acct-rows { display: flex; flex-direction: column; gap: 8px; }
   .acct-row { display: flex; align-items: center; gap: 8px; }
   .acct-row input { flex: 1; min-width: 0; }
@@ -440,16 +373,12 @@
   .field-hint { font-size: 11.5px; color: var(--muted); margin: 7px 0 0; line-height: 1.5; }
   .dup-warn.show { display: block; }
 
-  /* A box that's blocking the form gets an outline and nothing else.
-     It points at where to look without naming what's wrong. */
   input.is-invalid,
   input.is-invalid:focus {
     border-color: #fca5a5;
     box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.08);
   }
 
-  /* Sits under the button. Says whether the form is ready, never
-     why it isn't. */
   .gate-hint {
     min-height: 16px;
     margin: 10px 0 0;
@@ -479,7 +408,6 @@
     .card { animation: none !important; filter: none !important; }
   }
 
-  /* ========== MOBILE RESPONSIVE ========== */
   @media (max-width: 480px) {
     body { padding: 12px; align-items: flex-start; }
     .card { max-width: 100%; border-radius: 12px; }
@@ -493,11 +421,6 @@
   }
 
 </style>
-
-<!-- Interaction layer. Loaded after this page's own styles so it
-     refines them rather than competing with them. Additive only:
-     removing this line restores the previous appearance exactly. -->
-<link rel="stylesheet" href="ui-polish.css">
 </head>
 <body>
   <div class="card">

@@ -6,59 +6,6 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="robots" content="noindex, nofollow">
 
-<!--
-  Content Security Policy — ON.
-
-  It stops injected script from shipping what's typed here to an
-  address that isn't your Supabase project. It does NOT hide the
-  source; nothing served to a browser can be hidden.
-
-  Because it is on, this page no longer works opened straight off
-  disk (file:///...) — 'self' means nothing there and the page will
-  break. Serve it over http(s) to test:
-
-    npx --yes http-server . -p 8080
-
-  Send the same policy as a response header from your host as well
-  (Netlify _headers, Vercel vercel.json, nginx add_header) — a
-  header can also carry frame-ancestors, which a <meta> tag can't.
-
-  Keep this identical across every page listed in sync-csp.js's
-  PAGES array. The connect-src line is
-  generated -- run `node sync-csp.js` rather than editing it by hand,
-  and note that it now rewrites _htaccess too: a stale connect-src in
-  the response header is NOT overruled by a fresh one here. When both
-  a header and a <meta> policy are delivered the browser enforces BOTH,
-  and what applies is the intersection, so the older of the two wins
-  every disagreement.
-
-  script-src is now 'self' alone. It used to name cdn.jsdelivr.net,
-  which trusted every script on a public CDN in order to load two of
-  them. Both libraries are self-hosted under vendor/ instead -- run
-  `node sync-vendor.js` once before the first deploy, or every page
-  will fail to start.
-
-  script-src no longer carries 'unsafe-inline'. That is the whole
-  point of the page-*.js files: every page used to end in a several
-  hundred line inline <script>, and while one of those is on the page
-  the directive has to allow inline script, which is the same
-  permission an injected <script> needs. The directive was there
-  looking like a control and enforcing nothing against the attack it
-  names.
-
-  Two things will silently put that back. Adding an inline <script>
-  block anywhere in the file, and adding an onclick= (or any on*=)
-  attribute to any element -- CSP treats a handler attribute as inline
-  script, and neither a nonce nor a hash exempts it. Both fail closed:
-  the code simply does not run, and the browser console says so.
-  Attach a listener in the page's .js file instead.
-
-  style-src does still carry 'unsafe-inline', deliberately and
-  separately. Every page holds a large inline <style> block, and
-  config.js builds one more at runtime for the password toggles.
-  Removing it there is its own piece of work and buys much less --
-  inline style is not a script execution primitive.
--->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com;
@@ -109,7 +56,6 @@
 
   * { box-sizing: border-box; }
 
-  /* --- BODY WITH ENHANCED COLOR DESIGN --- */
   body {
     margin: 0;
     font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -139,7 +85,6 @@
     z-index: 0;
   }
 
-  /* --- MAIN HEADER (Matching SOA.html) --- */
   nav {
     position: relative;
     z-index: 10;
@@ -364,30 +309,6 @@
     box-shadow: 0 0 0 3px rgba(245, 176, 65, 0.25);
   }
 
-  /* ==================================================================
-     NEWS & UPDATES — bulletin treatment
-     ==================================================================
-     These entries are official notices from the Cash Office: work
-     suspensions, payroll schedules, system announcements. They used to
-     be styled as tinted callout boxes with a yellow tab, which is the
-     vocabulary of a tip or an aside — the visual language said "by the
-     way" about text that is frequently the opposite.
-
-     What replaces it is a dated bulletin: a hairline between entries,
-     the date set in the same monospace the identity and calendar cards
-     use for matters of record, and the body copy in ink rather than
-     grey. No box, no tab, no coloured fill. Authority here comes from
-     restraint and from the date being the first thing read.
-
-     Every selector below targets markup renderNews() in
-     page-dashboard.js already emits — <time class="news-date">, h3, p
-     and an optional img inside .news-item. Nothing here needs a change
-     to the renderer.
-     ================================================================== */
-
-  /* Entries are separated, not enclosed. A rule between two notices
-     says they are equal items in a series; a box around each says they
-     are unrelated widgets that happen to be stacked. */
   .news-item {
     padding: 16px 0;
     border-top: 1px solid var(--card-border);
@@ -401,14 +322,6 @@
     padding-bottom: 2px;
   }
 
-  /* On wide cards the date sits in its own column, the way a gazette or
-     a memorandum dates its entries down the left margin. The width is
-     set for the longest string formatTimestamp() produces — "Sept 30,
-     2026" — with the gutter kept generous so the two columns read as
-     separate.
-
-     :has() guards it: an entry rendered without a .news-date falls back
-     to the stacked layout instead of leaving an empty gutter. */
   .news-item:has(.news-date) {
     display: grid;
     grid-template-columns: 96px minmax(0, 1fr);
@@ -418,11 +331,6 @@
   .news-item:has(.news-date) > .news-date { grid-column: 1; }
   .news-item:has(.news-date) > :not(.news-date) { grid-column: 2; }
 
-  /* Hover is a tint that bleeds to the card's padding edge, so the
-     whole row lights up rather than a floating rectangle inside it. No
-     lift and no sideways slide — text that moves when you point at it
-     reads as playful, which is the wrong register for a notice about a
-     suspended workday. */
   .news-item:hover {
     background: var(--surface);
   }
@@ -435,10 +343,6 @@
     }
   }
 
-  /* JetBrains Mono, matching the account number and the calendar
-     heading: on this page, monospace is what the interface uses for
-     things that are matters of record. Tabular figures keep the dates
-     aligned down the column. */
   .news-date {
     display: block;
     font-family: "JetBrains Mono", monospace;
@@ -462,11 +366,6 @@
     color: var(--maroon-dark);
   }
 
-  /* Ink, not muted. A notice is the text people came to read; grey is
-     for labels and captions around it. pre-line preserves the line
-     breaks an administrator typed in the composer — the content is
-     escaped, not marked up, so without it a three-paragraph
-     announcement collapses into one block. */
   .news-item p {
     margin: 7px 0 0;
     font-size: 13.5px;
@@ -476,12 +375,6 @@
     white-space: pre-line;
   }
 
-  /* Masthead. h2.section-title is shared by every card on the page, so
-     this is scoped to #newsCard rather than changed globally — the
-     other cards are panels and should keep the lighter heading.
-
-     A double rule (the border plus the ::after hairline) is the oldest
-     signal there is for a masthead, and it costs one pseudo-element. */
   #newsCard .section-title {
     position: relative;
     margin-bottom: 4px;
@@ -509,7 +402,6 @@
     color: var(--muted);
   }
 
-  /* Interactive Calendar Styles */
   .cal-header {
     display: flex;
     justify-content: space-between;
@@ -638,9 +530,6 @@
   .event-del-btn:hover { text-decoration: underline; }
   .event-del-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* Image picker. The native file input is hidden and driven by its
-     <label>, because the browser's default control cannot be styled and
-     prints its own filename text. */
   .news-image-row { display: flex; align-items: center; gap: 8px; }
   .news-image-row input[type="file"] {
     position: absolute; width: 1px; height: 1px;
@@ -671,18 +560,6 @@
     object-fit: contain; align-self: flex-start;
   }
 
-  /* Image on a published item, public list and admin list.
-
-     .news-date moved up into the bulletin block above. It was defined
-     here originally, which is LATER in the file than its new home, so
-     leaving it would have silently won on source order and undone the
-     restyle. Rules for one component belong in one place.
-
-     No max-height: the image fills the card's width and keeps its own
-     aspect ratio, so a tall image is tall. That is deliberate -- an
-     announcement poster is meant to be read, not thumbnailed. If a
-     portrait image ever pushes too much of the dashboard down, add
-     `max-height` here rather than resizing the source. */
   .news-item img {
     display: block;
     max-width: 100%;
@@ -698,8 +575,6 @@
     border: 1px solid var(--card-border);
   }
 
-  /* Post News — reuses the .add-event-form vocabulary so the two
-     admin composers on this page look like one thing. */
   .news-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 
   .news-form input,
@@ -768,9 +643,6 @@
   }
   .news-admin-btns button:hover { background: var(--white); color: var(--maroon); }
 
-  /* Event preview picker. Sits under the add-event form and borrows
-     .news-image-pick / .news-image-name / .news-image-clear so the two
-     admin composers stay one visual language. */
   .event-image-row {
     display: flex; align-items: center; gap: 8px;
     margin-top: 6px;
@@ -780,9 +652,6 @@
     opacity: 0; pointer-events: none;
   }
 
-  /* Thumbnail in the day panel's event list. Fixed square so a row of
-     events stays aligned whatever shape the images are; object-fit
-     crops rather than distorting. */
   .event-thumb {
     width: 32px; height: 32px; flex-shrink: 0;
     object-fit: cover; border-radius: var(--radius-xs);
@@ -829,7 +698,6 @@
     font-style: italic;
   }
 
-  /* --- UPDATED TABLE STYLE MATCHING SOA.HTML --- */
   .available-card {
     grid-column: 1 / -1;
     overflow-x: auto;
@@ -878,7 +746,6 @@
     background: rgba(245, 176, 65, 0.12);
   }
 
-  /* Respect reduced motion */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -1121,7 +988,6 @@
     background: #faf8f5;
   }
 
-  /* --- Profile menu --- */
   .profile-menu { position: relative; }
   .profile-btn {
     display: flex;
@@ -1229,11 +1095,10 @@
   .profile-dropdown-item:hover { background: var(--surface); }
   .profile-dropdown-item.danger { color: #b91c1c; }
   .profile-dropdown-item.danger:hover { background: #fef2f2; }
-  /* ========== PRINT STYLES ========== */
+
   @media print {
     @page { size: auto; margin: 12mm 10mm; }
-    /* A notice that breaks across a page mid-sentence stops looking
-       like a document. Keep each entry whole where the paper allows. */
+
     .news-item { break-inside: avoid; page-break-inside: avoid; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     nav, .ai-launcher, .ai-widget, .profile-menu, .cal-header button, .add-event-form, .event-image-row, .news-form, .news-admin-list, .event-del-btn, #adminSection {
@@ -1267,7 +1132,6 @@
     .available-card tbody tr:hover td { background: #fff !important; box-shadow: none !important; }
   }
 
-  /* ========== MOBILE RESPONSIVE ========== */
   @media (max-width: 768px) {
     nav { padding: 12px 16px; gap: 10px; }
     nav .brand img { width: 44px; height: 44px; }
@@ -1281,9 +1145,7 @@
     .identity-name { font-size: 24px; letter-spacing: -0.4px; }
     .available-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .available-card table { min-width: 680px; }
-    /* The date column costs 96px plus its gutter, which is most of a
-       phone's usable measure. Below 768px the entry stacks and the date
-       goes back above the headline, where it started. */
+
     .news-item:has(.news-date) { display: block; }
     .news-item:has(.news-date) > .news-date,
     .news-item:has(.news-date) > :not(.news-date) { grid-column: auto; }
@@ -1340,31 +1202,12 @@
       <div class="identity-sub" id="acctSub"></div>
     </div>
 
-    <!-- ADMIN SECTION -->
-    <!--
-      The two approval queues (Account Registrations, and Name &
-      Account Number Changes) moved to users.html, above Manage Users.
-      They are administrator work on other people's accounts, which is
-      what that page is for; the dashboard is what someone sees about
-      their own. Administrators keeps its place here because granting
-      and removing admin rights is a different job from working a queue.
-    -->
     <div id="adminSection" style="display:none;">
       <div class="card admin-card">
         <h2 class="section-title">Administrators</h2>
         <div id="adminManager"></div>
       </div>
 
-      <!--
-        Post News. A direct child of #adminSection for the same reason
-        the available-checks card is: #adminSection is `display: contents`,
-        so its children are the grid items. A wrapper would swallow the
-        column sizing.
-
-        No <form> element and no on*= attributes anywhere in here --
-        script-src carries no 'unsafe-inline', so a handler attribute
-        would simply not run. Listeners are attached in page-dashboard.js.
-      -->
       <div class="card admin-card" id="newsAdminCard">
         <h2 class="section-title">Post News</h2>
 
@@ -1418,23 +1261,12 @@
       </table>
     </div>
 
-    <!--
-      News & Updates. The id is what scopes the masthead rule in the
-      style block; the card is otherwise an ordinary .card.
-
-      The attribution line is static text, not data. It says who the
-      notices come from, which is the single thing that most separates
-      an official announcement from a feed item, and it does not depend
-      on the renderer. Change the wording here if the office is named
-      differently in circulars.
-    -->
     <div class="card" id="newsCard">
       <h2 class="section-title">News &amp; Updates</h2>
       <p class="news-attribution">Official announcements &mdash; U.P. System Cash Office</p>
       <div id="newsList"><p class="loading">Loading news…</p></div>
     </div>
 
-    <!-- Interactive Calendar Card -->
     <div class="card">
       <h2 class="section-title">Upcoming Dates</h2>
       <div class="cal-header">

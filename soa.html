@@ -6,67 +6,6 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="robots" content="noindex, nofollow">
 
-<!--
-  Content Security Policy — ON.
-
-  It stops injected script from shipping what's typed here to an
-  address that isn't your Supabase project. It does NOT hide the
-  source; nothing served to a browser can be hidden.
-
-  Because it is on, this page no longer works opened straight off
-  disk (file:///...) — 'self' means nothing there and the page will
-  break. Serve it over http(s) to test:
-
-    npx --yes http-server . -p 8080
-
-  Send the same policy as a response header from your host as well
-  (Netlify _headers, Vercel vercel.json, nginx add_header) — a
-  header can also carry frame-ancestors, which a <meta> tag can't.
-
-  Keep this identical across every page listed in sync-csp.js's
-  PAGES array. The connect-src line is
-  generated -- run `node sync-csp.js` rather than editing it by hand,
-  and note that it now rewrites _htaccess too: a stale connect-src in
-  the response header is NOT overruled by a fresh one here. When both
-  a header and a <meta> policy are delivered the browser enforces BOTH,
-  and what applies is the intersection, so the older of the two wins
-  every disagreement.
-
-  script-src names two CDN origins. This is the ROLLBACK build: both
-  libraries load from the CDN at a pinned version, so no vendor/ folder
-  is needed and the site works on upload alone.
-
-  This is a stopgap, not the target. Naming an origin in script-src
-  trusts every script on it, not the two wanted. The self-hosted build
-  (script-src 'self' alone, libraries under vendor/) is the one to get
-  back to once `node sync-vendor.js` has been run successfully -- see
-  sync-vendor.js in the full project archive.
-
-  What this build does keep is the version pin. The original tag was
-  @2, a floating major: whatever the CDN served at page-load time ran
-  with full privileges. @2.112.1 does not move on its own.
-
-  script-src no longer carries 'unsafe-inline'. That is the whole
-  point of the page-*.js files: every page used to end in a several
-  hundred line inline <script>, and while one of those is on the page
-  the directive has to allow inline script, which is the same
-  permission an injected <script> needs. The directive was there
-  looking like a control and enforcing nothing against the attack it
-  names.
-
-  Two things will silently put that back. Adding an inline <script>
-  block anywhere in the file, and adding an onclick= (or any on*=)
-  attribute to any element -- CSP treats a handler attribute as inline
-  script, and neither a nonce nor a hash exempts it. Both fail closed:
-  the code simply does not run, and the browser console says so.
-  Attach a listener in the page's .js file instead.
-
-  style-src does still carry 'unsafe-inline', deliberately and
-  separately. Every page holds a large inline <style> block, and
-  config.js builds one more at runtime for the password toggles.
-  Removing it there is its own piece of work and buys much less --
-  inline style is not a script execution primitive.
--->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com;
@@ -119,7 +58,6 @@
 
   * { box-sizing: border-box; }
 
-  /* --- UPDATED BODY WITH ENHANCED COLOR DESIGN --- */
   body {
     margin: 0;
     font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -149,7 +87,6 @@
     z-index: 0;
   }
 
-  /* --- MAIN HEADER --- */
   nav {
     position: relative;
     z-index: 10;
@@ -252,7 +189,6 @@
     box-shadow: 0 4px 18px rgba(245, 176, 65, 0.5);
   }
 
-  /* --- Profile Menu Styling --- */
   .profile-menu { position: relative; }
   .profile-btn {
     display: flex;
@@ -738,7 +674,6 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Respect reduced motion */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
@@ -749,7 +684,6 @@
     .card:hover { transform: none !important; }
   }
 
-  /* ========== PRINT STYLES (responsive) ========== */
   @media print {
     @page { size: auto; margin: 12mm 10mm; }
     * {
@@ -816,7 +750,6 @@
     }
   }
 
-  /* ========== MOBILE RESPONSIVE ========== */
   @media (max-width: 768px) {
     nav { padding: 12px 16px; gap: 10px; }
     nav .brand img { width: 44px; height: 44px; }
@@ -856,11 +789,6 @@
     .table-scroll table { min-width: 560px; }
   }
 </style>
-
-<!-- Interaction layer. Loaded after this page's own styles so it
-     refines them rather than competing with them. Additive only:
-     removing this line restores the previous appearance exactly. -->
-<link rel="stylesheet" href="ui-polish.css">
 </head>
 <body>
   <nav>
@@ -947,9 +875,6 @@
       <div class="table-scroll">
         <table>
           <thead>
-            <!-- Filled by renderHead() from TABLE_COLUMNS. The ATM set is
-                 here as-written so the header isn't blank before the first
-                 render. -->
             <tr id="txnHead">
               <th>Credit Date</th>
               <th>DVNO#</th>

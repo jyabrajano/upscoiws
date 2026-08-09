@@ -37,12 +37,6 @@
       ]
     },
     {
-      "source": "/(.*)\\.css",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
-      ]
-    },
-    {
       "source": "/(.*)\\.(png|jpg|jpeg|gif|svg|webp|ico|woff2?)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=604800" }
