@@ -208,6 +208,13 @@
 
   await renderNews();
 
+  // news_version_trg has been bumping data_versions since the table was
+  // created, and nothing was listening. An administrator posting a
+  // notice is exactly the case the indirection was built for: everyone
+  // with the dashboard open sees it without reloading, and no news
+  // content travels over the channel -- only a version number.
+  watchDatasets(["news"], renderNews);
+
   // ------------------------------------------------------------
   // Post News — administrators only.
   //
@@ -231,11 +238,25 @@
     const clearBtn  = document.getElementById("newsImageClear");
     const previewEl = document.getElementById("newsImagePreview");
 
+    // The two caps are defined once, in sheets-config.js, and pushed
+    // onto the inputs here. dashboard.html still carries maxlength= as
+    // markup-level backstop, but these are what govern -- previously
+    // the number 2000 was written out in three separate files with
+    // nothing keeping them in step.
+    titleEl.maxLength = NEWS_TITLE_MAX;
+    contentEl.maxLength = NEWS_CONTENT_MAX;
+
     // null = composing a new item; a uuid = editing that one.
     let editingId = null;
-    // The path already stored on the item being edited. Kept so an edit
-    // that does not touch the picker leaves the existing image alone.
+    // What the item will point at once saved. The picker moves this:
+    // choosing a file replaces it, Remove sets it to null.
     let editingImagePath = null;
+    // What the item pointed at when the edit began, left alone by the
+    // picker. Without it, Remove destroyed the only remaining reference
+    // to the object before anything could delete it -- the row was
+    // nulled and the file stayed in the bucket, unreachable from the
+    // app and from the database both.
+    let originalImagePath = null;
     // Object URL for a freshly picked file, revoked when replaced --
     // otherwise every pick leaks a blob for the life of the page.
     let previewUrl = null;
@@ -258,15 +279,20 @@
       noteEl.className = "news-note" + (kind ? " " + kind : "");
     }
 
+    // `over` fires AT the cap, not past it. maxLength stops the field
+    // ever exceeding NEWS_CONTENT_MAX, so a `>` test could never be
+    // true and the warning state was unreachable. At the cap it is
+    // doing something useful -- explaining why typing stopped.
     function updateCount() {
       const n = contentEl.value.length;
-      countEl.textContent = n + " / 2000";
-      countEl.className = "news-count" + (n > 2000 ? " over" : "");
+      countEl.textContent = n + " / " + NEWS_CONTENT_MAX;
+      countEl.className = "news-count" + (n >= NEWS_CONTENT_MAX ? " over" : "");
     }
 
     function resetForm() {
       editingId = null;
       editingImagePath = null;
+      originalImagePath = null;
       titleEl.value = "";
       contentEl.value = "";
       fileEl.value = "";
@@ -281,6 +307,7 @@
     async function beginEdit(item) {
       editingId = item.id;
       editingImagePath = item.image_path || null;
+      originalImagePath = item.image_path || null;
       titleEl.value = item.title || "";
       contentEl.value = item.content || "";
       fileEl.value = "";
@@ -304,9 +331,17 @@
     // Rebuilt from scratch each time rather than patched in place: the
     // list is at most NEWS_LIMIT rows, and a full repaint cannot drift
     // out of step with the database the way incremental edits do.
+    // The rows behind the buttons currently on screen. Edit and Delete
+    // used to re-fetch the whole list to recover one row's image_path,
+    // so deleting a single item cost three round trips: one to find the
+    // path, one to repaint this list, one to repaint the public one.
+    // The list that drew the button already had the row.
+    let adminItems = [];
+
     async function renderAdminList() {
       try {
         const items = await fetchNews(20);
+        adminItems = items;
         if (!items.length) {
           adminList.innerHTML = '<p class="empty">Nothing posted yet.</p>';
           return;
@@ -340,8 +375,7 @@
       const delBtn  = ev.target.closest("[data-news-del]");
 
       if (editBtn) {
-        const items = await fetchNews(20);
-        const item = items.find(n => n.id === editBtn.getAttribute("data-news-edit"));
+        const item = adminItems.find(n => n.id === editBtn.getAttribute("data-news-edit"));
         if (item) await beginEdit(item);
         return;
       }
@@ -351,8 +385,7 @@
         if (!window.confirm("Delete this news item? This cannot be undone.")) return;
         delBtn.disabled = true;
         try {
-          const items = await fetchNews(20);
-          const item = items.find(n => n.id === id);
+          const item = adminItems.find(n => n.id === id);
           await deleteNews(id, item ? item.image_path : null);
           if (editingId === id) resetForm();
           say("Deleted.", "ok");
@@ -376,7 +409,9 @@
     });
 
     // Clears a picked file, and marks an existing image for removal on
-    // save by dropping the remembered path.
+    // save by dropping the path the row will be written with.
+    // originalImagePath is deliberately untouched -- it is what the
+    // save handler deletes the object by afterwards.
     clearBtn.addEventListener("click", () => {
       fileEl.value = "";
       editingImagePath = null;
@@ -390,34 +425,58 @@
     saveBtn.addEventListener("click", async () => {
       saveBtn.disabled = true;
       say("Saving…", null);
+
+      // Held outside the try so the catch can clean up after itself: if
+      // the image went up and the row did not, this is the only handle
+      // on the object left anywhere.
+      let uploaded = null;
+
       try {
+        // BEFORE the upload, not inside addNews() after it. The old
+        // order meant a blank headline uploaded the file first and then
+        // threw, stranding it in the bucket with no row pointing at it
+        // -- one such object is in there from the first day of use.
+        const fields = validateNewsFields(titleEl.value, contentEl.value);
+
         const picked = fileEl.files && fileEl.files[0];
         let imagePath = editingImagePath;
 
         if (picked) {
           say("Uploading image…", null);
-          imagePath = await uploadNewsImage(picked);
+          uploaded = await uploadNewsImage(picked);
+          imagePath = uploaded;
         }
 
         if (editingId) {
-          await updateNews(editingId, titleEl.value, contentEl.value, imagePath);
-          // Only once the row points at the new object. Reversing this
+          await updateNews(editingId, fields.title, fields.content, imagePath);
+          // Only once the row points somewhere else. Reversing this
           // would delete the old image and then, on a failed update,
           // leave the item pointing at nothing.
-          if (picked && editingImagePath && editingImagePath !== imagePath) {
-            await deleteNewsImage(editingImagePath);
+          //
+          // Compared against originalImagePath rather than
+          // editingImagePath, and without requiring `picked`. That
+          // covers the case the old condition missed entirely: Remove
+          // clears editingImagePath, so with no new file chosen there
+          // was nothing left to compare and the object was abandoned.
+          if (originalImagePath && originalImagePath !== imagePath) {
+            await deleteNewsImage(originalImagePath);
           }
           say("Changes saved.", "ok");
         } else {
-          await addNews(titleEl.value, contentEl.value, imagePath);
+          await addNews(fields.title, fields.content, imagePath);
           say("Posted.", "ok");
         }
         resetForm();
         await renderNews();
       } catch (e) {
         console.error("Failed to save news:", e);
-        // addNews/updateNews raise plain Error for the validation cases,
-        // so their wording is worth showing. A PostgREST error is not.
+        // The row never landed, so nothing points at whatever was just
+        // uploaded. Take it back out rather than leaving it for a
+        // reconciliation that has to be written and then remembered.
+        if (uploaded) await deleteNewsImage(uploaded);
+        // validateNewsFields/addNews/updateNews raise plain Error for
+        // the validation cases, so their wording is worth showing. A
+        // PostgREST error is not.
         say(e && e.message && !e.code ? e.message : "Couldn't save that. Try again.", "error");
       } finally {
         saveBtn.disabled = false;
@@ -629,15 +688,21 @@
         if (!title) return;
         const submitBtn = addForm.querySelector("button[type=submit]");
         submitBtn.disabled = true;
+        // Same shape as the news composer: the upload is held so that a
+        // failed insert can take it back out. An event image lands in
+        // the same bucket, so an orphan here is indistinguishable from
+        // an orphan there and just as unreachable.
+        let uploaded = null;
         try {
           const picked = evtFile.files && evtFile.files[0];
-          const imagePath = picked ? await uploadNewsImage(picked) : null;
-          const created = await addCalendarEvent(dateStr, title, imagePath);
+          if (picked) uploaded = await uploadNewsImage(picked);
+          const created = await addCalendarEvent(dateStr, title, uploaded);
           allEvents.push(created);
           renderCalendar();
           openDayPanel(dateStr);
         } catch (err) {
           console.error("Failed to add event:", err);
+          if (uploaded) await deleteNewsImage(uploaded);
           // uploadNewsImage() throws plain Error for the size and type
           // cases, and that wording is worth showing. A PostgREST error
           // carries a `code` and is not.
@@ -689,6 +754,22 @@
   document.getElementById("nextMonth").addEventListener("click", () => {
     currentDisplayDate.setMonth(currentDisplayDate.getMonth() + 1);
     showMonth();
+  });
+
+  // calendar_events_version_trg was in the same position news was: the
+  // trigger deployed, nothing subscribed. Reloads the window around the
+  // month on screen and repaints the grid.
+  //
+  // The open day panel is left alone deliberately. Rebuilding it would
+  // discard whatever an administrator had typed into the add-event
+  // field, and the panel is reopened by the next click anyway.
+  watchDatasets(["calendar_events"], async () => {
+    try {
+      await loadCalendarWindow(currentDisplayDate);
+      renderCalendar();
+    } catch (e) {
+      console.error("Failed to refresh calendar events:", e);
+    }
   });
 })();
 

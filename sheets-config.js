@@ -54,6 +54,32 @@ async function fetchNews(limit) {
   return data || [];
 }
 
+// Validation lives here, on its own, because the save handler in
+// page-dashboard.js has to be able to run it BEFORE it uploads an
+// image. It used to exist only inside addNews()/updateNews(), which
+// meant the order of operations was: upload the file, then discover the
+// headline was blank, then throw -- leaving an object in the bucket
+// that no row points at and nothing can find again. One such orphan
+// exists in the bucket from the first day of use.
+//
+// addNews() and updateNews() still call it, so a caller that skips the
+// early check is not let through; it is the same implementation either
+// way, not a second copy.
+function validateNewsFields(title, content) {
+  const cleanTitle = String(title == null ? "" : title).trim();
+  const cleanContent = String(content == null ? "" : content).trim();
+
+  if (!cleanTitle) throw new Error("A headline is required.");
+  if (!cleanContent) throw new Error("Some text is required.");
+  if (cleanTitle.length > NEWS_TITLE_MAX) {
+    throw new Error(`Headline must be ${NEWS_TITLE_MAX} characters or fewer.`);
+  }
+  if (cleanContent.length > NEWS_CONTENT_MAX) {
+    throw new Error(`Text must be ${NEWS_CONTENT_MAX} characters or fewer.`);
+  }
+  return { title: cleanTitle, content: cleanContent };
+}
+
 // News is written by administrators only. The three functions below all
 // go straight at the table rather than through an RPC, because
 // news_admin_write already says `is_admin()` for USING and WITH CHECK --
@@ -73,8 +99,24 @@ async function fetchNews(limit) {
 // unapproved user cannot mint one.
 const NEWS_IMAGE_BUCKET = "news-images";
 const NEWS_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
-const NEWS_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const NEWS_SIGNED_URL_TTL = 3600;
+
+// One map, not a list plus a parser. The extension used to be split off
+// the uploaded filename, which fails on a file that has no dot in it at
+// all: "photo".split(".").pop() is "photo", so the object landed as
+// <uuid>.photo. The `|| "bin"` fallback never fired, because pop() on a
+// one-element array is not empty.
+//
+// The type is what the bucket's allowed_mime_types actually checks, so
+// deriving the extension from it keeps the name honest and drops the
+// dependency on whatever the person happened to call the file.
+const NEWS_IMAGE_EXT = {
+  "image/jpeg": "jpg",
+  "image/png":  "png",
+  "image/webp": "webp",
+  "image/gif":  "gif",
+};
+const NEWS_IMAGE_TYPES = Object.keys(NEWS_IMAGE_EXT);
 
 async function uploadNewsImage(file) {
   if (!file) return null;
@@ -92,8 +134,9 @@ async function uploadNewsImage(file) {
   // Random name, not the original. An uploaded filename can carry a
   // person's name, a path, or characters that need escaping every time
   // the value is used; none of that is worth keeping for a dashboard card.
-  const ext = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const path = `${crypto.randomUUID()}.${ext || "bin"}`;
+  // The extension comes from the type checked just above, so it always
+  // matches the bytes and never depends on the filename.
+  const path = `${crypto.randomUUID()}.${NEWS_IMAGE_EXT[file.type]}`;
 
   const { error } = await supabaseClient
     .storage.from(NEWS_IMAGE_BUCKET)
@@ -125,17 +168,7 @@ async function deleteNewsImage(path) {
 }
 
 async function addNews(title, content, imagePath) {
-  const cleanTitle = String(title == null ? "" : title).trim();
-  const cleanContent = String(content == null ? "" : content).trim();
-
-  if (!cleanTitle) throw new Error("A headline is required.");
-  if (!cleanContent) throw new Error("Some text is required.");
-  if (cleanTitle.length > NEWS_TITLE_MAX) {
-    throw new Error(`Headline must be ${NEWS_TITLE_MAX} characters or fewer.`);
-  }
-  if (cleanContent.length > NEWS_CONTENT_MAX) {
-    throw new Error(`Text must be ${NEWS_CONTENT_MAX} characters or fewer.`);
-  }
+  const { title: cleanTitle, content: cleanContent } = validateNewsFields(title, content);
 
   const { data, error } = await supabaseClient
     .from("news")
@@ -148,17 +181,7 @@ async function addNews(title, content, imagePath) {
 }
 
 async function updateNews(id, title, content, imagePath) {
-  const cleanTitle = String(title == null ? "" : title).trim();
-  const cleanContent = String(content == null ? "" : content).trim();
-
-  if (!cleanTitle) throw new Error("A headline is required.");
-  if (!cleanContent) throw new Error("Some text is required.");
-  if (cleanTitle.length > NEWS_TITLE_MAX) {
-    throw new Error(`Headline must be ${NEWS_TITLE_MAX} characters or fewer.`);
-  }
-  if (cleanContent.length > NEWS_CONTENT_MAX) {
-    throw new Error(`Text must be ${NEWS_CONTENT_MAX} characters or fewer.`);
-  }
+  const { title: cleanTitle, content: cleanContent } = validateNewsFields(title, content);
 
   // created_at is deliberately not touched. An edit is a correction to an
   // existing announcement, not a new one, and rewriting the timestamp
