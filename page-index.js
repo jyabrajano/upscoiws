@@ -36,7 +36,7 @@ function showStatusRich(heading, message, type) {
 
 function showAccessMessage(state, reason) {
   if (state === "pending") {
-    showStatusRich("Waiting for approval", "Your registration is still with the Cash Office. You'll get an email " + "as soon as it's approved, and you can sign in from here after that.", "notice");
+    showStatusRich("Account Status:", "Under review. Contact the administrator for more information.", "notice");
   } else if (state === "rejected") {
     showStatusRich("Access not approved", reason ? `The Cash Office didn't approve this account: ${reason}` : "The Cash Office didn't approve this account. Contact the Cash Office if you think this is a mistake.", "error");
   } else if (state === "disabled") {
