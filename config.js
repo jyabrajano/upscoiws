@@ -12,18 +12,6 @@ if (SUPABASE_URL.includes("YOUR_SUPABASE") || SUPABASE_ANON_KEY.includes("YOUR_S
   });
 }
 
-if (!window.supabase || typeof window.supabase.createClient !== "function") {
-  const message = "The Supabase library did not load. vendor/supabase.js is missing or was " + "served as the wrong type — check that the vendor/ folder is committed and " + "deployed, then run `node sync-vendor.js` if it is not on disk.";
-  console.error("[config.js] " + message);
-  document.addEventListener("DOMContentLoaded", () => {
-    const banner = document.createElement("div");
-    banner.textContent = "⚠ " + message;
-    banner.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:9999;background:#b91c1c;color:#fff;" + "font:600 13px/1.4 sans-serif;text-align:center;padding:10px;";
-    document.body.prepend(banner);
-  });
-  throw new Error("supabase-js is not loaded; see the banner at the top of the page.");
-}
-
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 function todayLocalISO() {

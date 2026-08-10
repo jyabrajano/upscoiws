@@ -20,6 +20,8 @@ sync-sri.js
 sync-csp.js
 sync-vendor.js
 check-drift.js
+check-headers.js
+check-history.js
 build-clean.js
 
 # The schema and its documentation. deploy-schema.sql is already kept

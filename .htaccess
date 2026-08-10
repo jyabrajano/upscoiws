@@ -10,6 +10,28 @@
 # On Netlify or Cloudflare Pages this file does nothing — use
 # _headers there instead. Apache blocks .ht* files from being served
 # by default, so leaving it in place on any host is harmless.
+#
+# ---- THE SITE DEPLOYS TO VERCEL. NOTHING HERE IS IN FORCE. ----
+#
+# "Harmless" above is true of serving it and false of trusting it.
+# Vercel never reads Apache config, so every rule below applies in
+# production exactly nowhere. vercel.json is the file that runs, and
+# it is a translation of this one.
+#
+# Which makes the dangerous move obvious in hindsight: add a header
+# here, and it ships to no host, raises nothing, and leaves a file
+# that reads as though the protection is in place. The next person to
+# audit it finds the rule, finds it plausible, and stops looking.
+#
+# So this file is kept as a MIRROR, and `node check-headers.js`
+# proves it is still one. It compares every header here against
+# vercel.json scope by scope, compares both against the nine <meta>
+# tags, and fails on anything one side has and the other lacks. Run
+# it before pushing; it is read-only and chains with the rest.
+#
+# When it fails, ADD the rule to the file that lacks it. Deleting it
+# from the file that has it also makes the script pass, and quietly
+# throws away the reason either file exists.
 # ============================================================
 
 # ---- security headers ----
@@ -38,14 +60,13 @@
   # why the page-*.js files exist. Do not add it back to make an
   # inline script work; move the script into the page's .js file.
   #
-  # script-src names cdn.sheetjs.com and nothing else external.
-  # supabase-js is served from vendor/supabase.js on this origin, so
-  # cdn.jsdelivr.net has been removed. xlsx is still fetched from
-  # cdn.sheetjs.com by soa.html; `node sync-vendor.js` brings that file
-  # local too, after which this directive is 'self' alone.
-  #
-  # Note this file is inert on Vercel -- vercel.json carries the same
-  # policy and is what actually ships. Change both or neither.
+  # THIS IS THE CDN BUILD. script-src names cdn.jsdelivr.net and
+  # cdn.sheetjs.com because the pages load supabase-js and xlsx from
+  # them directly, at pinned versions, with an integrity= hash on each
+  # tag (run `node sync-sri.js` to generate or re-check those hashes).
+  # vendor/ does not exist in this snapshot and sync-vendor.js is not
+  # wired to anything — see the build note in .gitignore, which is the
+  # file that says which of the two builds you are looking at.
   #
   # This comment used to claim the opposite: that the CDN origins were
   # gone and both libraries came from vendor/. They never did in this
@@ -59,21 +80,8 @@
   # line AND from the nine <meta> tags, and drop the integrity=
   # attributes with them. The intersection rule above means missing
   # one of the ten is not a partial failure, it is a total one.
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://xgcdbtahappoqegheitd.supabase.co; connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://xgcdbtahappoqegheitd.supabase.co; connect-src 'self' https://xgcdbtahappoqegheitd.supabase.co wss://xgcdbtahappoqegheitd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 
-  # One year, and deliberately WITHOUT includeSubDomains or preload.
-  #
-  # includeSubDomains binds every sibling host under this domain to
-  # HTTPS as well. On a university domain that is a promise about
-  # machines this portal does not own and cannot check -- one legacy
-  # HTTP-only subdomain and you have broken somebody else's site from
-  # here. Add it only once the whole domain is known to be HTTPS.
-  #
-  # preload is worse to get wrong: it bakes the domain into a list
-  # compiled into browsers, and removal takes months. Neither is
-  # needed for what HSTS is doing here, which is stopping a downgrade
-  # on a return visit.
-  Header always set Strict-Transport-Security "max-age=31536000"
   Header always set X-Frame-Options "DENY"
   Header always set X-Content-Type-Options "nosniff"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"

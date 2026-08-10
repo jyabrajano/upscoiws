@@ -1,60 +1,28 @@
 # Never publish these — the repo is public.
 #
-# supabase/ is the three Edge Functions. They are deployed straight to
-# Supabase with `supabase functions deploy` -- Vercel never serves them
-# and the public site never needs them. Publishing them hands over the
-# list of RPCs, the shape of every authorization check, and the
-# assistant's system prompt. Same argument as the schema below: not a
-# key, but a map. They live in the private repo.
-#
-# package.json / package-lock.json exist only to pin build-clean.js's
-# four dependencies (terser, acorn, node-html-parser, typescript). The
-# site itself has none and loads nothing from npm at runtime; a
-# package.json in the public repo would suggest otherwise and invite a
-# `npm install` that has nothing to do with deploying.
-#
-# VERCEL.md is deployment documentation, and goes with README.md.
-#
-# The tooling (sync-*.js, check-drift.js, build-clean.js) is private
-# for the same reason. None of it is served, none of it is a secret,
-# and all of it describes the site's internals in detail -- sync-csp.js
-# alone spells out the whole content-security policy and where each
-# directive comes from. Work in the private repo; publish the subset.
-#
 # deploy-schema.sql is the whole database design. Not a key (security
 # lives in the database, not in secrecy) but a free map for anyone
 # poking at the API. Deleting a file later removes it from the site but
 # NOT from git history — add it here before the first `git add`.
 deploy-schema.sql
-supabase/
 sync-csp.js
 sync-vendor.js
-sync-sri.js
-check-drift.js
-build-clean.js
 email-*.html
 README.md
-VERCEL.md
 LEGAL-COMPLIANCE.md
 DEPLOY.txt
-package.json
-package-lock.json
 .DS_Store
 Thumbs.db
 node_modules/
 
-# ---- current build note (2026-08-09) ----
+# ---- current build note (2026-08-07) ----
 #
-# Half self-hosted. supabase-js is served from vendor/supabase.js on
-# every page and cdn.jsdelivr.net is gone from script-src entirely.
-# xlsx is still loaded from cdn.sheetjs.com by soa.html alone, because
-# 0.20.3 exists nowhere else -- npm's newest xlsx is 0.18.5 and carries
-# CVE-2023-30533.
-#
-# So vendor/ and vendor-lock.json DO exist here and the section below
-# applies. `node sync-vendor.js` fetches the remaining file and closes
-# out the last CDN origin; build-clean.js refuses to build if anything
-# under vendor/ that a page references is missing.
+# This snapshot is the CDN build: the pages load supabase-js and xlsx
+# from cdn.jsdelivr.net / cdn.sheetjs.com at pinned versions, and
+# script-src names those two origins. So vendor/ and vendor-lock.json
+# do not exist here and there is nothing for the section below to
+# track — it is kept because it becomes true again the moment
+# sync-vendor.js is run and the self-hosted pages are adopted.
 
 # ---- what is deliberately NOT ignored ----
 #
