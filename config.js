@@ -12,7 +12,53 @@ if (SUPABASE_URL.includes("YOUR_SUPABASE") || SUPABASE_ANON_KEY.includes("YOUR_S
   });
 }
 
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const SHARED_DEVICE_KEY = "scoiws:shared-device";
+
+function sharedDevice() {
+  try {
+    return localStorage.getItem(SHARED_DEVICE_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
+function setSharedDevice(on) {
+  try {
+    if (on) localStorage.setItem(SHARED_DEVICE_KEY, "1"); else localStorage.removeItem(SHARED_DEVICE_KEY);
+  } catch (_) {}
+}
+
+// The session store is chosen per operation, not once at construction.
+// Ticking "shared computer" on the sign-in page has to take effect for
+// the sign-in that follows it milliseconds later, and the client is
+// already built by then -- so the decision is deferred to read/write
+// time instead. On a shared machine the session lands in sessionStorage
+// and dies with the tab; the preference itself stays in localStorage,
+// which is not sensitive and means the counter PC stays configured.
+const sessionStore = {
+  getItem: key => {
+    try {
+      return (sharedDevice() ? sessionStorage : localStorage).getItem(key);
+    } catch (_) {
+      return null;
+    }
+  },
+  setItem: (key, value) => {
+    try {
+      (sharedDevice() ? sessionStorage : localStorage).setItem(key, value);
+    } catch (_) {}
+  },
+  removeItem: key => {
+    // Both, always. A session written before the box was ticked must not
+    // survive in the store the SDK is no longer looking at.
+    try { sessionStorage.removeItem(key); } catch (_) {}
+    try { localStorage.removeItem(key); } catch (_) {}
+  }
+};
+
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { storage: sessionStore }
+});
 
 function todayLocalISO() {
   const d = new Date;
@@ -68,10 +114,43 @@ async function getApprovalState(email) {
   };
 }
 
+// Pages a signed-in user may be sent back to. A hardcoded list, not a
+// pattern and never a raw URL from the query string: `?returnTo=` that
+// accepts anything is an open redirect, and an open redirect on a
+// sign-in page is a phishing primitive -- the link genuinely starts at
+// your domain.
+const RETURN_PAGES = [ "dashboard.html", "soa.html", "users.html", "editaccount.html" ];
+
+function currentPageName() {
+  const last = window.location.pathname.split("/").pop();
+  return last || "dashboard.html";
+}
+
+// Reads ?returnTo= and answers with a page name that is certainly ours.
+// Anything unrecognised silently becomes the dashboard.
+function safeReturnTarget() {
+  try {
+    const asked = new URLSearchParams(window.location.search).get("returnTo");
+    if (asked && RETURN_PAGES.includes(asked)) return asked;
+  } catch (_) {}
+  return "dashboard.html";
+}
+
+function signInUrlWithReturn(extraQuery) {
+  const here = currentPageName();
+  const parts = [];
+  if (extraQuery) parts.push(extraQuery);
+  // No point round-tripping the default; it only makes the URL noisy.
+  if (RETURN_PAGES.includes(here) && here !== "dashboard.html") {
+    parts.push("returnTo=" + encodeURIComponent(here));
+  }
+  return "index.html" + (parts.length ? "?" + parts.join("&") : "");
+}
+
 async function requireSession() {
   const {data: {session: session}} = await supabaseClient.auth.getSession();
   if (!session) {
-    window.location.href = "index.html";
+    window.location.href = signInUrlWithReturn();
     return null;
   }
   const state = await getApprovalState(session.user.email);
@@ -81,10 +160,11 @@ async function requireSession() {
   }
   if (state.status !== "approved") {
     await supabaseClient.auth.signOut();
-    window.location.href = `index.html?access=${encodeURIComponent(state.status)}`;
+    window.location.href = signInUrlWithReturn(`access=${encodeURIComponent(state.status)}`);
     return null;
   }
-  startIdleWatch();
+  startIdleWatch(session);
+  startSessionWatch();
   return session;
 }
 
@@ -120,7 +200,50 @@ async function logout() {
   window.location.href = "index.html";
 }
 
+// Waits for the SDK to finish turning a link -- a confirmation link, an
+// OAuth redirect -- into a session.
+//
+// The previous approach polled getSession() every 250 ms and gave up
+// after a fixed budget, which is a guess about how long the SDK takes
+// dressed up as a loop. This asks to be told. getSession() first,
+// because the SDK may already be done before this runs; the listener
+// only covers the case where it is not.
+async function waitForSession(timeoutMs) {
+  const {data: {session: existing}} = await supabaseClient.auth.getSession();
+  if (existing) return existing;
+  return new Promise(resolve => {
+    let settled = false;
+    let unsubscribe = null;
+    const finish = session => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { if (unsubscribe) unsubscribe(); } catch (_) {}
+      resolve(session);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs || 8e3);
+    try {
+      const {data: sub} = supabaseClient.auth.onAuthStateChange((event, session) => {
+        if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED")) {
+          finish(session);
+        }
+      });
+      unsubscribe = () => sub.subscription.unsubscribe();
+    } catch (err) {
+      console.warn("Couldn't subscribe to auth state:", err);
+      finish(null);
+    }
+  });
+}
+
 const IDLE_LIMIT_MS = 5 * 60 * 1e3;
+
+// A ceiling on how long one sign-in is good for, however busy the tab
+// is. Idle timeout alone never expires a session somebody keeps
+// touching -- a counter terminal left logged in and used all day held
+// its session indefinitely. Measured from last_sign_in_at, so it
+// survives reloads and cannot be reset by activity.
+const SESSION_MAX_MS = 8 * 60 * 60 * 1e3;
 
 const IDLE_WARN_MS = 60 * 1e3;
 
@@ -201,6 +324,13 @@ function idleShowWarning(secondsLeft) {
   stay.focus();
 }
 
+let sessionStartedAt = null;
+
+function sessionAgeExceeded() {
+  if (!sessionStartedAt) return false;
+  return Date.now() - sessionStartedAt >= SESSION_MAX_MS;
+}
+
 async function idleSignOut() {
   idleWatching = false;
   idleDismissWarning();
@@ -213,9 +343,27 @@ async function idleSignOut() {
   window.location.replace("index.html?timeout=1");
 }
 
-function startIdleWatch() {
+async function expirySignOut() {
+  idleWatching = false;
+  idleDismissWarning();
+  try { localStorage.removeItem(IDLE_KEY); } catch (_) {}
+  try { await supabaseClient.auth.signOut(); } catch (_) {}
+  window.location.replace("index.html?expired=1");
+}
+
+function startIdleWatch(session) {
   if (idleWatching) return;
   idleWatching = true;
+  // last_sign_in_at is the server's record of when this session began.
+  // Falling back to now() means a session whose age cannot be read gets
+  // the full window rather than being cut short on a bad guess.
+  const startedAt = session && session.user && session.user.last_sign_in_at
+    ? Date.parse(session.user.last_sign_in_at) : NaN;
+  sessionStartedAt = isNaN(startedAt) ? Date.now() : startedAt;
+  if (sessionAgeExceeded()) {
+    expirySignOut();
+    return;
+  }
   idleMarkActivity(true);
   [ "pointerdown", "pointermove", "keydown", "scroll", "wheel", "focus" ].forEach(evt => window.addEventListener(evt, () => idleMarkActivity(false), {
     passive: true,
@@ -226,6 +374,10 @@ function startIdleWatch() {
   });
   setInterval(() => {
     if (!idleWatching) return;
+    if (sessionAgeExceeded()) {
+      expirySignOut();
+      return;
+    }
     const idleFor = Date.now() - idleReadLastActivity();
     if (idleFor >= IDLE_LIMIT_MS) {
       idleSignOut();
@@ -1189,4 +1341,80 @@ async function mountAccountActivity(container, limit) {
         'whether anything else happens \u2014 an account number changed by somebody ' +
         'else redirects your next payment.</p>'
       : "");
+}
+
+// ---------------------------------------------------------------------
+// Session watch — role and account status, rechecked
+//
+// Both were read once at page load and never again. Revoke somebody's
+// admin rights and their open tab kept the admin panels; disable an
+// account and the same tab kept rendering. RLS meant every write failed,
+// so this was cosmetic rather than dangerous — but it surfaced as a red
+// error, which reads as "the portal is broken", not "your access
+// changed".
+//
+// Sixty seconds. Frequent enough that a revocation lands inside the
+// window a person would notice anyway, rare enough to be invisible next
+// to the five-second idle poll.
+// ---------------------------------------------------------------------
+
+const SESSION_WATCH_MS = 60 * 1e3;
+let sessionWatching = false;
+let lastKnownRole = null;
+
+async function fetchSessionState() {
+  const { data, error } = await supabaseClient.rpc("my_session_state");
+  if (error) throw error;
+  return data;
+}
+
+async function accessRevokedSignOut(reason) {
+  sessionWatching = false;
+  try { localStorage.removeItem(IDLE_KEY); } catch (_) {}
+  try { await supabaseClient.auth.signOut(); } catch (_) {}
+  window.location.replace(`index.html?access=${encodeURIComponent(reason)}`);
+}
+
+function startSessionWatch() {
+  if (sessionWatching) return;
+  sessionWatching = true;
+
+  const tick = async () => {
+    if (!sessionWatching) return;
+    let state;
+    try {
+      state = await fetchSessionState();
+    } catch (err) {
+      // A failed check is not evidence of anything. Signing somebody out
+      // because the network blinked would be worse than the problem this
+      // solves.
+      console.warn("Couldn't refresh session state:", err);
+      return;
+    }
+    if (!state || state.signed_in !== true) return;
+
+    if (state.disabled === true) {
+      await accessRevokedSignOut("disabled");
+      return;
+    }
+    if (state.approved !== true && state.is_admin !== true) {
+      await accessRevokedSignOut("revoked");
+      return;
+    }
+
+    const role = `${state.is_admin === true}:${state.is_main === true}`;
+    if (lastKnownRole === null) {
+      lastKnownRole = role;
+    } else if (lastKnownRole !== role) {
+      // Reload rather than re-render. Admin surfaces are mounted across
+      // several modules with their own state; rebuilding them in place
+      // is a lot of moving parts to get right for a rare event, and a
+      // reload is provably correct.
+      lastKnownRole = role;
+      window.location.reload();
+    }
+  };
+
+  tick();
+  setInterval(tick, SESSION_WATCH_MS);
 }

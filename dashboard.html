@@ -21,7 +21,7 @@
 <link rel="icon" type="image/png" href="UPSeal.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.1"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.1" integrity="sha384-ZM8CwwQOJp5puchJk/gzqVbkGOUMVxHQPIY7mDCclfX3C8u6+ZyCjOcwaMC8hbnQ" crossorigin="anonymous"></script>
 <script src="config.js"></script>
 <script src="sheets-config.js"></script>
 <script src="approval.js"></script>
@@ -196,6 +196,18 @@
   @media (min-width: 800px) {
     .wrap { grid-template-columns: 2fr 1fr; }}
 
+  .admin-gate-note {
+    margin: 0 0 18px;
+    padding: 11px 14px;
+    border-radius: 10px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-left: 3px solid #d97706;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #78350f;
+  }
+  .admin-gate-note[hidden] { display: none; }
   .card {
     background: var(--card);
     backdrop-filter: blur(28px) saturate(1.35);
@@ -1201,6 +1213,8 @@
       <div class="identity-name" id="identityName">Loading…</div>
       <div class="identity-sub" id="acctSub"></div>
     </div>
+
+    <div id="adminGateNote" class="admin-gate-note" hidden></div>
 
     <div id="adminSection" style="display:none;">
       <div class="card admin-card">

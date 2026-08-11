@@ -236,8 +236,8 @@ form.addEventListener("submit", async e => {
       showAccessMessage(state.status, state.reason);
       return;
     }
-    await recordAccountEvent("sign_in");
-    window.location.href = "dashboard.html";
+    await recordAccountEvent("sign_in", sharedDevice() ? {shared_device: true} : null);
+    window.location.href = safeReturnTarget();
     return;
   } catch (err) {
     console.error("Sign-in failed:", err);
@@ -268,17 +268,12 @@ form.addEventListener("submit", async e => {
   }
   if (hashParams.get("type") === "signup" || params.get("type") === "signup") {
     history.replaceState(null, "", window.location.pathname);
-    let session = null;
-    const started = Date.now();
-    while (!session && Date.now() - started < 2500) {
-      ({data: {session: session}} = await supabaseClient.auth.getSession());
-      if (!session) await new Promise(r => setTimeout(r, 250));
-    }
+    const session = await waitForSession(8e3);
     if (session) {
       const state = await getApprovalState(session.user.email);
       if (state.status === "approved") {
         await recordAccountEvent("sign_in");
-        window.location.href = "dashboard.html";
+        window.location.href = safeReturnTarget();
         return;
       }
       await supabaseClient.auth.signOut();
@@ -301,6 +296,11 @@ form.addEventListener("submit", async e => {
     history.replaceState(null, "", window.location.pathname);
     return;
   }
+  if (params.get("expired") === "1") {
+    showStatusRich("Session expired", "Sign-ins last eight hours, however busy the tab is. " + "Sign in again to carry on.", "notice");
+    history.replaceState(null, "", window.location.pathname);
+    return;
+  }
   if (params.get("timeout") === "1") {
     showStatusRich("Signed out", "You were signed out after five minutes of inactivity, so your " + "account details aren't left on screen. Sign in again to carry on.", "notice");
     history.replaceState(null, "", window.location.pathname);
@@ -313,12 +313,7 @@ form.addEventListener("submit", async e => {
     return;
   }
   if (hashParams.get("access_token") || params.get("code")) {
-    let session = null;
-    const started = Date.now();
-    while (!session && Date.now() - started < 5e3) {
-      ({data: {session: session}} = await supabaseClient.auth.getSession());
-      if (!session) await new Promise(r => setTimeout(r, 250));
-    }
+    const session = await waitForSession(1e4);
     history.replaceState(null, "", window.location.pathname);
     if (!session) {
       showStatusRich("Couldn't complete sign-in", "UP Mail didn't return a valid session. Try again, or sign in with your email and password.", "error");
@@ -327,7 +322,7 @@ form.addEventListener("submit", async e => {
     const state = await getApprovalState(session.user.email);
     if (state.status === "approved") {
       await recordAccountEvent("sign_in");
-      window.location.href = "dashboard.html";
+      window.location.href = safeReturnTarget();
       return;
     }
     await supabaseClient.auth.signOut();
@@ -336,6 +331,17 @@ form.addEventListener("submit", async e => {
   }
   try {
     const {data: {session: session}} = await supabaseClient.auth.getSession();
-    if (session) window.location.href = "dashboard.html";
+    if (session) window.location.href = safeReturnTarget();
   } catch (_) {}
 })();
+
+
+// "This is a shared computer" — read at sign-in time by the storage
+// adapter in config.js, which routes the session to sessionStorage so it
+// dies with the browser. Set on change rather than on submit, because
+// the UP Mail button leaves the page without ever submitting the form.
+const sharedDeviceBox = document.getElementById("sharedDevice");
+if (sharedDeviceBox) {
+  sharedDeviceBox.checked = sharedDevice();
+  sharedDeviceBox.addEventListener("change", () => setSharedDevice(sharedDeviceBox.checked));
+}

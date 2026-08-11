@@ -3,7 +3,19 @@
   if (!session) return;
   const user = session.user;
   ensurePrivacyNoticeAck(user.email);
+  // checkIsAdmin() returns null when the check itself failed, which is not
+  // the same as "not an admin". Treating null as false hides the admin
+  // tools and says nothing, so an administrator hitting a blip concludes
+  // their access was pulled. page-users.js already distinguishes the
+  // two; this is the same handling.
   const isAdmin = await checkIsAdmin();
+  if (isAdmin === null) {
+    const gateNote = document.getElementById("adminGateNote");
+    if (gateNote) {
+      gateNote.textContent = "Couldn't check your access just now — this is usually a brief " + "connection problem. If you're an administrator, reload the page to " + "get the admin tools back.";
+      gateNote.hidden = false;
+    }
+  }
   const {data: profile, error: profileErr} = await supabaseClient.from("profiles").select("id, full_name, account_number").eq("email", user.email).single();
   if (profileErr) console.error("Failed to load profile:", profileErr);
   let adminManager = null;

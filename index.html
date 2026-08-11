@@ -21,7 +21,7 @@
 <link rel="icon" type="image/png" href="UPSeal.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.1"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.1" integrity="sha384-ZM8CwwQOJp5puchJk/gzqVbkGOUMVxHQPIY7mDCclfX3C8u6+ZyCjOcwaMC8hbnQ" crossorigin="anonymous"></script>
 <script src="config.js"></script>
 <style>
   :root {
@@ -386,6 +386,33 @@
     text-align: right;
     margin: -8px 0 16px;
   }
+  .shared-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin: 2px 0 4px;
+  }
+  .shared-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 2px 0 0;
+    flex: 0 0 auto;
+    accent-color: var(--maroon, #7b1113);
+  }
+  .shared-row label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #0f172a;
+    line-height: 1.4;
+    cursor: pointer;
+  }
+  .shared-row label span {
+    display: block;
+    font-weight: 400;
+    font-size: 11.5px;
+    color: var(--muted, #64748b);
+    margin-top: 2px;
+  }
 
   .forgot-row button {
     background: none;
@@ -540,6 +567,13 @@
         <div class="field">
           <label for="password">Password</label>
           <input type="password" id="password" required placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <div class="shared-row">
+          <input type="checkbox" id="sharedDevice">
+          <label for="sharedDevice">
+            This is a shared computer
+            <span>Signs you out when the browser closes, and keeps nothing on this machine.</span>
+          </label>
         </div>
         <div class="forgot-row" id="forgotRow">
           <button type="button" id="forgotBtn">Forgot password?</button>

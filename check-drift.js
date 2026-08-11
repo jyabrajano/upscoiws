@@ -6,20 +6,20 @@ const path = require("path");
 const SCHEMA = path.join(__dirname, "deploy-schema.sql");
 
 const EXPECTED = {
-  tables: 16,
+  tables: 17,
   indexes: 29,
-  functions: 68,
+  functions: 70,
   rowTriggers: 15,
   eventTriggers: 1,
   publicPolicies: 17,
   storagePolicies: 4,
   buckets: 1,
-  rlsTables: 16,
+  rlsTables: 17,
   cronJobs: 1,
   realtimeTables: 1
 };
 
-const DENY_ALL_BY_DESIGN = new Set([ "admins", "admin_invites", "admin_removal_requests", "ai_assistant_usage" ]);
+const DENY_ALL_BY_DESIGN = new Set([ "admins", "admin_invites", "admin_removal_requests", "ai_assistant_usage", "anon_probe_budget" ]);
 
 const EXTENSION_FUNCTIONS = new Set([ "similarity", "word_similarity", "show_trgm", "gen_random_uuid", "gen_random_bytes", "crypt", "digest", "uuid_generate_v4" ]);
 
