@@ -382,6 +382,47 @@
   }
   .trunc-notice[hidden] { display: none; }
 
+  .stmt-ref {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #14532d;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-left: 3px solid #16a34a;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 0 0 12px;
+  }
+  .stmt-ref[hidden] { display: none; }
+  .stmt-ref strong { display: block; margin-bottom: 2px; font-size: 13px; }
+
+  .pager {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--card-border);
+  }
+  .pager[hidden] { display: none; }
+  .pager button {
+    border: 1px solid var(--card-border);
+    background: #fff;
+    border-radius: 8px;
+    padding: 7px 14px;
+    font: 600 13px/1 inherit;
+    color: #0f172a;
+    cursor: pointer;
+  }
+  .pager button:hover:not(:disabled) { background: #f8fafc; }
+  .pager button:disabled { opacity: .45; cursor: default; }
+  .page-summary { font-size: 13px; color: var(--muted, #64748b); }
+  .page-totals { font-size: 13px; font-weight: 700; color: #0f172a; margin-left: auto; }
+  @media (max-width: 640px) {
+    .page-totals { margin-left: 0; width: 100%; }
+  }
+
   .table-tabs {
     display: flex;
     gap: 6px;
@@ -691,6 +732,7 @@
       print-color-adjust: exact !important;
     }
     nav, .filter-bar, .export-btn, .print-btn, .table-tabs, .trunc-notice,
+    .pager, .stmt-ref,
     .profile-menu, .btn-group {
       display: none !important;
     }
@@ -722,6 +764,7 @@
     }
     .print-only .print-title { font-size: 14pt; font-weight: 700; color: #7b1113; }
     .print-only .print-sub { font-size: 9pt; color: #444; margin-top: 4px; }
+    .print-only .print-ref { font-size: 8.5pt; color: #333; margin-top: 3px; }
     .table-scroll { overflow: visible !important; }
     table { min-width: 0 !important; width: 100% !important; border-collapse: collapse !important; }
     thead { display: table-header-group; }
@@ -843,9 +886,10 @@
       <div class="print-only" id="printHeader">
         <div class="print-title">University of the Philippines — Statement of Account</div>
         <div class="print-sub" id="printSub"></div>
+        <div class="print-ref" id="printRef"></div>
       </div>
 
-      <div id="truncNotice" class="trunc-notice" hidden></div>
+      <div id="stmtRef" class="stmt-ref" hidden></div>
 
       <div class="table-tabs" id="tableTabs">
         <button type="button" class="table-tab active" id="atmTabBtn" data-table-tab="ATM">ATM Transactions</button>
@@ -887,6 +931,13 @@
             <tr><td colspan="5" class="empty">Loading transactions…</td></tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="pager" id="pager" hidden>
+        <button type="button" id="pagePrevBtn">&lsaquo; Previous</button>
+        <button type="button" id="pageNextBtn">Next &rsaquo;</button>
+        <span class="page-summary" id="pageSummary"></span>
+        <span class="page-totals" id="pageTotals"></span>
       </div>
     </div>
   </div>

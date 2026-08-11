@@ -28,6 +28,8 @@ function debounce(fn, ms) {
   };
 }
 
+let refreshActivity = null;
+
 const submitBtn = document.getElementById("eaSubmit");
 
 const gateEl = document.getElementById("eaGate");
@@ -200,6 +202,14 @@ submitBtn.disabled = false;
     }
     refresh();
   });
+  // The account holder's own view of what has happened to their account.
+  // admin_actions answers "what did staff do"; this answers "did somebody
+  // get in as me", which nothing here could answer before.
+  const activityEl = document.getElementById("eaActivity");
+  if (activityEl) {
+    refreshActivity = () => mountAccountActivity(activityEl, 15);
+    refreshActivity();
+  }
   try {
     await initEditAccountApproval({
       profile: profile,
@@ -321,6 +331,8 @@ document.getElementById("eaPasswordForm").addEventListener("submit", async e => 
     pwConfirmInput.value = "";
     pwAsked = false;
     showStatus("Password updated.", "success");
+    await recordAccountEvent("password_changed");
+    if (typeof refreshActivity === "function" && refreshActivity) refreshActivity();
   } catch (err) {
     console.error("Couldn't update the password:", err);
     showStatus("Couldn't update your password.", "error");
@@ -355,6 +367,8 @@ if (exportBtn) {
       a.remove();
       URL.revokeObjectURL(url);
       exportNote.textContent = "Downloaded. The file contains your personal data — keep it somewhere safe.";
+      await recordAccountEvent("data_exported");
+      if (typeof refreshActivity === "function" && refreshActivity) refreshActivity();
     } catch (err) {
       console.error("Data export failed:", err);
       exportNote.textContent = "Couldn't prepare the file. Try again, or contact the Cash Office.";

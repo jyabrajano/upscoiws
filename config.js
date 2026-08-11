@@ -969,3 +969,224 @@ if (document.readyState === "loading") {
 } else {
   initSharedBehaviour();
 }
+
+// =====================================================================
+// APPEND THIS TO THE END OF config.js
+//
+// Shared helpers for the 2026-08-11 patch. They live in config.js
+// because config.js is already the layer every page loads first, and
+// because splitting them into a new file would mean a new <script> tag
+// on nine pages, a new SRI hash, and a CSP resync — churn out of all
+// proportion to a hundred lines of glue.
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// Transactions — server-side paging
+// ---------------------------------------------------------------------
+
+// Returns { rows, total_count, total_amount, limit, offset, has_more }.
+// total_count and total_amount cover the WHOLE matching set, not the
+// page — that distinction is the point of the function.
+async function fetchMyTransactions(kind, from, to, account, limit, offset) {
+  const { data, error } = await supabaseClient.rpc("my_transactions", {
+    p_kind: kind,
+    p_from: from || null,
+    p_to: to || null,
+    p_account: account || null,
+    p_limit: limit || 100,
+    p_offset: offset || 0
+  });
+  if (error) throw error;
+  return data;
+}
+
+// ---------------------------------------------------------------------
+// Issued statements
+// ---------------------------------------------------------------------
+
+// Registers a statement and returns its reference and server-computed
+// totals. Call this when a statement leaves the screen — printed,
+// exported — not on every page view, or the registry fills with
+// references nobody was ever given.
+async function issueStatement(kind, from, to, account) {
+  const { data, error } = await supabaseClient.rpc("issue_statement", {
+    p_kind: kind,
+    p_from: from || null,
+    p_to: to || null,
+    p_account: account || null
+  });
+  if (error) throw error;
+  return data;
+}
+
+async function verifyStatement(reference) {
+  const { data, error } = await supabaseClient.rpc("verify_statement", {
+    p_reference: reference
+  });
+  if (error) throw error;
+  return data;
+}
+
+// ---------------------------------------------------------------------
+// Account events — the user's own security history
+// ---------------------------------------------------------------------
+
+// The server decides what gets written: user_email comes from the JWT,
+// the IP and user agent from the request headers. The client only says
+// which of three things just happened. Failures are swallowed on
+// purpose — a sign-in must not fail because its audit line did.
+async function recordAccountEvent(kind, detail) {
+  try {
+    const { error } = await supabaseClient.rpc("record_account_event", {
+      p_kind: kind,
+      p_detail: detail || null
+    });
+    if (error) throw error;
+  } catch (err) {
+    console.warn("Couldn't record account event:", kind, err);
+  }
+}
+
+async function myAccountEvents(limit) {
+  const { data, error } = await supabaseClient.rpc("my_account_events", {
+    p_limit: limit || 25
+  });
+  if (error) throw error;
+  return data || [];
+}
+
+const ACCOUNT_EVENT_LABELS = {
+  sign_in: "Signed in",
+  sign_in_new_device: "Signed in from an unrecognised device",
+  password_changed: "Password changed",
+  email_changed: "Email address changed",
+  profile_change_requested: "Change request submitted",
+  profile_change_withdrawn: "Change request withdrawn",
+  profile_change_approved: "Change request approved by the Cash Office",
+  profile_change_rejected: "Change request declined by the Cash Office",
+  account_number_changed: "LBP account number changed",
+  data_exported: "Copy of your data downloaded",
+  statement_issued: "Statement issued",
+  access_disabled: "Access switched off",
+  access_restored: "Access restored"
+};
+
+// Deliberately coarse. A precise device string is a fingerprint and
+// tells the account holder less than "Chrome on Windows" does — the
+// question they are answering is "was that me", not "which build".
+function deviceLabel(userAgent) {
+  const ua = String(userAgent || "");
+  if (!ua) return "Unknown device";
+  let browser = "Browser";
+  if (/Edg\//.test(ua)) browser = "Edge";
+  else if (/OPR\/|Opera/.test(ua)) browser = "Opera";
+  else if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) browser = "Chrome";
+  else if (/Firefox\//.test(ua)) browser = "Firefox";
+  else if (/Safari\//.test(ua)) browser = "Safari";
+  let os = "";
+  if (/Android/.test(ua)) os = "Android";
+  else if (/iPhone|iPad|iPod/.test(ua)) os = "iOS";
+  else if (/Windows/.test(ua)) os = "Windows";
+  else if (/Mac OS X/.test(ua)) os = "macOS";
+  else if (/Linux/.test(ua)) os = "Linux";
+  return os ? `${browser} on ${os}` : browser;
+}
+
+function formatEventStamp(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleString(undefined, {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit"
+  });
+}
+
+function injectAccountActivityStyles() {
+  if (document.getElementById("accountActivityStyles")) return;
+  const style = document.createElement("style");
+  style.id = "accountActivityStyles";
+  style.textContent = `
+    .activity-list { list-style:none; margin:12px 0 0; padding:0; }
+    .activity-list li {
+      display:flex; gap:10px; align-items:flex-start;
+      padding:10px 0; border-bottom:1px solid var(--card-border,#e2e8f0);
+    }
+    .activity-list li:last-child { border-bottom:0; }
+    .activity-dot {
+      flex:0 0 8px; width:8px; height:8px; border-radius:50%;
+      background:#94a3b8; margin-top:6px;
+    }
+    .activity-dot.flag { background:#b91c1c; }
+    .activity-main { flex:1 1 auto; min-width:0; }
+    .activity-what { font-weight:600; font-size:13.5px; color:#0f172a; }
+    .activity-meta { font-size:12px; color:var(--muted,#64748b); margin-top:2px; }
+    .activity-empty { font-size:13px; color:var(--muted,#64748b); margin:12px 0 0; }
+    .activity-alarm {
+      margin:12px 0 0; padding:10px 12px; border-radius:8px;
+      background:#fef2f2; border:1px solid #fecaca; border-left:3px solid #b91c1c;
+      font-size:12.5px; line-height:1.55; color:#7f1d1d;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// Renders the account holder's own recent activity into `container`.
+// Used on Edit Account; safe to drop anywhere a signed-in user is.
+async function mountAccountActivity(container, limit) {
+  if (!container) return;
+  injectAccountActivityStyles();
+  container.innerHTML = '<p class="activity-empty">Loading\u2026</p>';
+
+  let events;
+  try {
+    events = await myAccountEvents(limit || 15);
+  } catch (err) {
+    console.error("Couldn't load your account activity:", err);
+    container.innerHTML =
+      '<p class="activity-empty">Couldn\'t load your recent activity. ' +
+      'Reload the page to try again.</p>';
+    return;
+  }
+
+  if (!events.length) {
+    container.innerHTML =
+      '<p class="activity-empty">Nothing recorded yet. Activity from here on ' +
+      'will be listed, starting with your next sign-in.</p>';
+    return;
+  }
+
+  // Anything that changes where money goes, or that suggests somebody
+  // else got in, is flagged. The flag is visual only — the words carry
+  // the meaning, in case the colour does not reach the reader.
+  const FLAGGED = new Set(["sign_in_new_device", "account_number_changed", "password_changed", "email_changed"]);
+  const anyFlagged = events.some(e => FLAGGED.has(e.kind));
+
+  const rows = events.map(e => {
+    const what = ACCOUNT_EVENT_LABELS[e.kind] || e.kind;
+    const bits = [formatEventStamp(e.at), deviceLabel(e.user_agent), e.ip || null].filter(Boolean);
+    let extra = "";
+    if (e.kind === "account_number_changed" && e.detail) {
+      extra = ` \u2014 ${escapeHtml(e.detail.from || "none")} \u2192 ${escapeHtml(e.detail.to || "none")}`;
+    } else if (e.kind === "statement_issued" && e.detail && e.detail.reference) {
+      extra = ` \u2014 ${escapeHtml(e.detail.reference)}`;
+    }
+    return `
+      <li>
+        <span class="activity-dot${FLAGGED.has(e.kind) ? " flag" : ""}"></span>
+        <span class="activity-main">
+          <span class="activity-what">${escapeHtml(what)}${extra}</span>
+          <span class="activity-meta">${escapeHtml(bits.join(" \u00b7 "))}</span>
+        </span>
+      </li>`;
+  }).join("");
+
+  container.innerHTML =
+    `<ul class="activity-list">${rows}</ul>` +
+    (anyFlagged
+      ? '<p class="activity-alarm"><strong>Something here you don\'t recognise?</strong> ' +
+        'Change your password now, then tell the Cash Office. Do not wait to see ' +
+        'whether anything else happens \u2014 an account number changed by somebody ' +
+        'else redirects your next payment.</p>'
+      : "");
+}

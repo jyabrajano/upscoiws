@@ -10,28 +10,6 @@
 # On Netlify or Cloudflare Pages this file does nothing — use
 # _headers there instead. Apache blocks .ht* files from being served
 # by default, so leaving it in place on any host is harmless.
-#
-# ---- THE SITE DEPLOYS TO VERCEL. NOTHING HERE IS IN FORCE. ----
-#
-# "Harmless" above is true of serving it and false of trusting it.
-# Vercel never reads Apache config, so every rule below applies in
-# production exactly nowhere. vercel.json is the file that runs, and
-# it is a translation of this one.
-#
-# Which makes the dangerous move obvious in hindsight: add a header
-# here, and it ships to no host, raises nothing, and leaves a file
-# that reads as though the protection is in place. The next person to
-# audit it finds the rule, finds it plausible, and stops looking.
-#
-# So this file is kept as a MIRROR, and `node check-headers.js`
-# proves it is still one. It compares every header here against
-# vercel.json scope by scope, compares both against the nine <meta>
-# tags, and fails on anything one side has and the other lacks. Run
-# it before pushing; it is read-only and chains with the rest.
-#
-# When it fails, ADD the rule to the file that lacks it. Deleting it
-# from the file that has it also makes the script pass, and quietly
-# throws away the reason either file exists.
 # ============================================================
 
 # ---- security headers ----

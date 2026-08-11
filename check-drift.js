@@ -6,15 +6,15 @@ const path = require("path");
 const SCHEMA = path.join(__dirname, "deploy-schema.sql");
 
 const EXPECTED = {
-  tables: 14,
-  indexes: 27,
-  functions: 57,
+  tables: 16,
+  indexes: 29,
+  functions: 68,
   rowTriggers: 15,
   eventTriggers: 1,
-  publicPolicies: 15,
+  publicPolicies: 17,
   storagePolicies: 4,
   buckets: 1,
-  rlsTables: 14,
+  rlsTables: 16,
   cronJobs: 1,
   realtimeTables: 1
 };

@@ -236,6 +236,7 @@ form.addEventListener("submit", async e => {
       showAccessMessage(state.status, state.reason);
       return;
     }
+    await recordAccountEvent("sign_in");
     window.location.href = "dashboard.html";
     return;
   } catch (err) {
@@ -276,6 +277,7 @@ form.addEventListener("submit", async e => {
     if (session) {
       const state = await getApprovalState(session.user.email);
       if (state.status === "approved") {
+        await recordAccountEvent("sign_in");
         window.location.href = "dashboard.html";
         return;
       }
@@ -324,6 +326,7 @@ form.addEventListener("submit", async e => {
     }
     const state = await getApprovalState(session.user.email);
     if (state.status === "approved") {
+      await recordAccountEvent("sign_in");
       window.location.href = "dashboard.html";
       return;
     }

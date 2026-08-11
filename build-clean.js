@@ -21,7 +21,7 @@ const SHIPPED_JS = [ "config.js", "approval.js", "sheets-config.js", "page-index
 
 const SHIPPED_HTML = [ "index.html", "dashboard.html", "soa.html", "users.html", "registration.html", "editaccount.html", "reset-password.html", "privacy.html", "terms.html" ];
 
-const ARCHIVE_JS = [ "sync-sri.js", "sync-csp.js", "sync-vendor.js", "check-drift.js", "check-headers.js", "check-history.js", "build-clean.js" ];
+const ARCHIVE_JS = [ "sync-sri.js", "sync-csp.js", "sync-vendor.js", "check-drift.js", "build-clean.js" ];
 
 const ARCHIVE_HTML = [ "email-confirm-signup.html", "email-reset-password.html" ];
 

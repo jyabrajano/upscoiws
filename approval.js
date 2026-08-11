@@ -60,12 +60,21 @@ async function rejectRegistration(email, reason) {
   return data;
 }
 
-async function approveProfileChange(requestId) {
+async function approveProfileChange(requestId, verification) {
   const {data: data, error: error} = await supabaseClient.rpc("approve_profile_change", {
-    p_request_id: requestId
+    p_request_id: requestId,
+    p_verification: verification || null
   });
   if (error) throw error;
   return data;
+}
+
+async function profileChangeRisk(requestId) {
+  const {data: data, error: error} = await supabaseClient.rpc("profile_change_risk", {
+    p_request_id: requestId
+  });
+  if (error) throw error;
+  return data || {};
 }
 
 async function rejectProfileChange(requestId, note) {
@@ -127,6 +136,70 @@ function injectApprovalStyles() {
   style.id = "approvalStyles";
   style.textContent = css;
   document.head.appendChild(style);
+}
+
+// Asks the reviewer HOW they verified a new LBP account number, and
+// against what. Returns {method, reference}; returns {} when the request
+// does not touch the account number; returns null if the reviewer backs
+// out, which the caller must treat as "do nothing".
+//
+// A modal rather than prompt(): the method is a fixed choice, not free
+// text, and this is the one decision in the portal that can redirect
+// somebody's salary. It should not feel like the rejection-reason box.
+async function requestChangeVerification(requestId) {
+  let risk = {};
+  try {
+    risk = await profileChangeRisk(requestId);
+  } catch (err) {
+    console.warn("Couldn't load the risk summary:", err);
+  }
+  if (!risk.account_number_changed) return {};
+  if (!document.getElementById("verifyDialogStyles")) {
+    const style = document.createElement("style");
+    style.id = "verifyDialogStyles";
+    style.textContent = ".vf-back{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.55);font:14px/1.55 system-ui,sans-serif;}" + ".vf-card{max-width:480px;width:100%;background:#fff;border-radius:12px;padding:24px;box-shadow:0 12px 40px rgba(15,23,42,.25);color:#0f172a;max-height:90vh;overflow:auto;}" + ".vf-card h2{margin:0 0 6px;font-size:17px;}" + ".vf-lead{margin:0 0 14px;font-size:13px;color:#475569;}" + ".vf-flags{margin:0 0 14px;padding:10px 12px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;border-left:3px solid #b91c1c;font-size:12.5px;color:#7f1d1d;}" + ".vf-flags ul{margin:6px 0 0;padding-left:18px;}" + ".vf-card label{display:block;font-weight:600;font-size:12.5px;margin:0 0 5px;}" + ".vf-card select,.vf-card input{width:100%;padding:9px 10px;font:inherit;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:12px;box-sizing:border-box;}" + ".vf-hint{font-size:12px;color:#64748b;margin:-8px 0 14px;}" + ".vf-actions{display:flex;gap:8px;justify-content:flex-end;}" + ".vf-actions button{border:0;border-radius:8px;padding:10px 18px;font:700 13px/1 inherit;cursor:pointer;}" + ".vf-go{background:#7b1113;color:#fff;}" + ".vf-go:disabled{opacity:.45;cursor:default;}" + ".vf-cancel{background:#e2e8f0;color:#0f172a;}";
+    document.head.appendChild(style);
+  }
+  const flags = [];
+  if (risk.password_changed_recently) flags.push("The password was changed in the last 14 days.");
+  if (risk.email_changed_recently) flags.push("The email address was changed in the last 14 days.");
+  if (risk.new_device_sign_in_recently) flags.push("There was a sign-in from an unrecognised device in the last 14 days.");
+  if (Number(risk.account_age_days) < 30) flags.push(`The account is ${risk.account_age_days} days old.`);
+  if (Number(risk.previous_account_changes) > 0) flags.push(`The account number has already been changed ${risk.previous_account_changes} time(s).`);
+  return new Promise(resolve => {
+    const back = document.createElement("div");
+    back.className = "vf-back";
+    back.setAttribute("role", "dialog");
+    back.setAttribute("aria-modal", "true");
+    back.innerHTML = `\n      <div class="vf-card">\n        <h2>Verify the new account number</h2>\n        <p class="vf-lead">\n          This request changes where this person's money is paid. The portal\n          cannot check the number against Land Bank, so your check is the only\n          one there is. Record what you did.\n        </p>\n        ${flags.length ? `<div class="vf-flags">\n          <strong>Worth a phone call before you approve:</strong>\n          <ul>${flags.map(f => `<li>${escapeHtml(f)}</li>`).join("")}</ul>\n        </div>` : ""}\n        <label for="vfMethod">How did you verify it?</label>\n        <select id="vfMethod">\n          <option value="">&mdash; choose &mdash;</option>\n          <option value="bank_document">Bank document (passbook, ATM card, bank certificate)</option>\n          <option value="hr_payroll_record">HR / payroll record already on file</option>\n          <option value="in_person_id">In person, with ID</option>\n          <option value="phone_callback">Callback to a number already on file</option>\n        </select>\n        <label for="vfRef">Against what?</label>\n        <input type="text" id="vfRef" maxlength="160" autocomplete="off"\n               placeholder="e.g. LBP passbook seen 11 Aug 2026, acct ending 4471">\n        <p class="vf-hint">Goes in the audit log with your name against it, and stays there.</p>\n        <div class="vf-actions">\n          <button type="button" class="vf-cancel" id="vfCancel">Cancel</button>\n          <button type="button" class="vf-go" id="vfGo" disabled>Approve change</button>\n        </div>\n      </div>`;
+    document.body.appendChild(back);
+    const method = back.querySelector("#vfMethod");
+    const ref = back.querySelector("#vfRef");
+    const go = back.querySelector("#vfGo");
+    function gate() {
+      go.disabled = !method.value || ref.value.trim().length < 3;
+    }
+    method.addEventListener("change", gate);
+    ref.addEventListener("input", gate);
+    function close(value) {
+      back.remove();
+      document.removeEventListener("keydown", onKey);
+      resolve(value);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") close(null);
+    }
+    document.addEventListener("keydown", onKey);
+    back.querySelector("#vfCancel").addEventListener("click", () => close(null));
+    back.addEventListener("click", e => {
+      if (e.target === back) close(null);
+    });
+    go.addEventListener("click", () => close({
+      method: method.value,
+      reference: ref.value.trim()
+    }));
+    method.focus();
+  });
 }
 
 async function adminSearchUsers(query) {
@@ -397,6 +470,11 @@ async function mountAdminQueues(opts) {
             reason = prompt(kind === "registration" ? "Why is this registration being rejected? The person will see this." : "Why is this change being rejected? The person will see this.");
             if (reason === null) return;
           }
+          let verification = null;
+          if (act === "approve" && kind === "change") {
+            verification = await requestChangeVerification(card.getAttribute("data-id"));
+            if (verification === null) return;
+          }
           buttons.forEach(b => b.disabled = true);
           try {
             let result;
@@ -412,7 +490,7 @@ async function mountAdminQueues(opts) {
               say(host, (act === "approve" ? `${result.email} can now sign in.` : `${result.email} was rejected.`) + (sent ? " They've been emailed." : " Email notice didn't send — tell them another way."), true);
             } else {
               const id = card.getAttribute("data-id");
-              result = act === "approve" ? await approveProfileChange(id) : await rejectProfileChange(id, reason);
+              result = act === "approve" ? await approveProfileChange(id, verification) : await rejectProfileChange(id, reason);
               const sent = await notifyDecision("profile_change", {
                 email: result.email,
                 full_name: result.full_name || null,
