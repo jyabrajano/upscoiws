@@ -278,6 +278,42 @@ Deno.serve(async (req) => {
       return json(req, { error: "Not authorized." }, 403);
     }
 
+    // Rate limit. Authorization answers "may this person use it at all";
+    // it says nothing about how often, and without the second question
+    // one approved account can drive a metered API as fast as it can
+    // loop — on your bill. ai_assistant_take_token() counts the call and
+    // returns false past 60 in a rolling hour.
+    //
+    // Taken AFTER authorization, so an unauthorized caller cannot spend
+    // somebody else's budget, and BEFORE the provider call, which is the
+    // only ordering that saves any money. A token is spent on every
+    // attempt including ones that fail downstream — that is deliberate,
+    // since a retry loop against a failing provider is exactly the shape
+    // this is here to stop.
+    const { data: hasToken, error: tokenErr } = await caller.rpc(
+      "ai_assistant_take_token",
+    );
+
+    if (tokenErr) {
+      // Fail closed. The bucket is the only thing standing between an
+      // approved account and an unmetered API; if it cannot be consulted,
+      // the safe answer is no.
+      console.error("ai_assistant_take_token failed:", tokenErr);
+      return json(req, { error: "Assistant unavailable. Try again shortly." }, 503);
+    }
+
+    if (hasToken !== true) {
+      return json(
+        req,
+        {
+          error:
+            "You've reached the hourly limit for the assistant. " +
+            "Try again in a little while.",
+        },
+        429,
+      );
+    }
+
     // ---- what they're asking ----
     const raw = await req.json().catch(() => ({}));
     const message = String(raw?.message ?? "").trim();
