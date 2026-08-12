@@ -210,6 +210,8 @@ submitBtn.disabled = false;
     refreshActivity = () => mountAccountActivity(activityEl, 15);
     refreshActivity();
   }
+  const mfaEl = document.getElementById("eaMfa");
+  if (mfaEl) mountMfaPanel(mfaEl);
   try {
     await initEditAccountApproval({
       profile: profile,
@@ -311,10 +313,27 @@ document.getElementById("eaPasswordForm").addEventListener("submit", async e => 
       showStatus("You've been signed out. Sign in again to change your password.", "error");
       return;
     }
-    const {error: reauthError} = await supabaseClient.auth.signInWithPassword({
+    // Verified on a THROWAWAY client, not this one.
+    //
+    // Calling signInWithPassword on supabaseClient proves the old
+    // password, but it also replaces the live session with a fresh one
+    // — and a fresh password sign-in is aal1. Once MFA enforcement is
+    // on, an administrator changing their password would silently lose
+    // their admin tools for the rest of the session, with nothing on
+    // screen explaining why.
+    //
+    // persistSession:false keeps this instance out of storage entirely,
+    // so the real session is untouched and its assurance level survives.
+    const verifier = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {persistSession: false, autoRefreshToken: false, detectSessionInUrl: false}
+    });
+    const {error: reauthError} = await verifier.auth.signInWithPassword({
       email: who.user.email,
       password: pwCurrentInput.value
     });
+    try {
+      await verifier.auth.signOut();
+    } catch (_) {}
     if (reauthError) {
       showStatus("That isn't your current password.", "error");
       pwCurrentInput.classList.add("is-invalid");
@@ -330,8 +349,21 @@ document.getElementById("eaPasswordForm").addEventListener("submit", async e => 
     pwInput.value = "";
     pwConfirmInput.value = "";
     pwAsked = false;
-    showStatus("Password updated.", "success");
-    await recordAccountEvent("password_changed");
+    // Anyone else holding a session on this account is signed out.
+    // Someone changing their password because they think they have been
+    // compromised expects that to end the intruder's access; without
+    // this it does not, and the old session keeps working until it
+    // expires on its own.
+    let othersEnded = true;
+    try {
+      const {error: scopeErr} = await supabaseClient.auth.signOut({scope: "others"});
+      if (scopeErr) throw scopeErr;
+    } catch (scopeErr) {
+      othersEnded = false;
+      console.warn("Couldn't sign out other sessions:", scopeErr);
+    }
+    showStatus(othersEnded ? "Password updated. Any other devices signed in to this account have been signed out." : "Password updated. We couldn't sign out your other devices — sign out and back in on those to be sure.", "success");
+    await recordAccountEvent("password_changed", othersEnded ? {other_sessions_ended: true} : null);
     if (typeof refreshActivity === "function" && refreshActivity) refreshActivity();
   } catch (err) {
     console.error("Couldn't update the password:", err);
@@ -376,4 +408,193 @@ if (exportBtn) {
       exportBtn.disabled = false;
     }
   });
+}
+
+// ---------------------------------------------------------------------
+// Two-step verification panel
+//
+// Three states, and the difference between them is the whole point:
+//
+//   not enrolled          offer to set it up
+//   enrolled, aal1        already protected; this session just hasn't
+//                         entered a code, which only matters to admins
+//   enrolled, aal2        fully verified this session
+//
+// Administrators get an extra line, because for them this stops being
+// optional the moment enforcement is switched on — and the panel is
+// where they find that out, not a support call afterwards.
+// ---------------------------------------------------------------------
+
+function injectMfaStyles() {
+  if (document.getElementById("eaMfaStyles")) return;
+  const style = document.createElement("style");
+  style.id = "eaMfaStyles";
+  style.textContent = `
+    .mfa-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px; }
+    .mfa-pill { font-size:12px; font-weight:700; padding:4px 10px; border-radius:999px; }
+    .mfa-pill.on  { background:#f0fdf4; color:#14532d; border:1px solid #bbf7d0; }
+    .mfa-pill.off { background:#fef2f2; color:#7f1d1d; border:1px solid #fecaca; }
+    .mfa-note { font-size:12.5px; line-height:1.55; color:var(--muted,#64748b); margin:10px 0 0; }
+    .mfa-warn { margin:10px 0 0; padding:10px 12px; border-radius:8px; background:#fffbeb;
+      border:1px solid #fde68a; border-left:3px solid #d97706; font-size:12.5px;
+      line-height:1.55; color:#78350f; }
+    .mfa-setup { margin-top:14px; padding:16px; border:1px solid var(--card-border,#e2e8f0);
+      border-radius:10px; background:#fff; }
+    .mfa-setup img { display:block; width:180px; height:180px; margin:12px auto; }
+    .mfa-secret { font:600 13px/1.5 ui-monospace,monospace; word-break:break-all;
+      background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:8px 10px;
+      margin:0 0 12px; text-align:center; }
+    .mfa-setup input { width:100%; padding:11px; font:600 20px/1 ui-monospace,monospace;
+      letter-spacing:.3em; text-align:center; border:1.5px solid #cbd5e1;
+      border-radius:8px; box-sizing:border-box; }
+    .mfa-msg { min-height:18px; margin:8px 0 0; font-size:12.5px; }
+    .mfa-msg.err { color:#b91c1c; } .mfa-msg.ok { color:#14532d; }
+    .mfa-btns { display:flex; gap:8px; margin-top:12px; }
+    .mfa-btns button { flex:1; border:0; border-radius:8px; padding:11px;
+      font:700 13px/1 inherit; cursor:pointer; }
+    .mfa-btns .go { background:var(--maroon,#7b1113); color:#fff; }
+    .mfa-btns .go:disabled { opacity:.45; cursor:default; }
+    .mfa-btns .cancel { background:#e2e8f0; color:#0f172a; }
+  `;
+  document.head.appendChild(style);
+}
+
+async function mountMfaPanel(container) {
+  if (!container) return;
+  injectMfaStyles();
+  container.innerHTML = '<p class="mfa-note">Loading…</p>';
+
+  let state, factors;
+  try {
+    state = await mfaState();
+    factors = await mfaListFactors();
+  } catch (err) {
+    console.error("Couldn't load two-step verification state:", err);
+    container.innerHTML = '<p class="mfa-note">Couldn\'t load this just now. Reload the page to try again.</p>';
+    return;
+  }
+
+  const verified = factors.filter(f => f.status === "verified");
+  const isAdmin = state.is_admin_row === true;
+  const required = state.required_for_admins === true;
+
+  if (verified.length) {
+    const atAal2 = state.aal === "aal2";
+    container.innerHTML =
+      '<div class="mfa-row"><span class="mfa-pill on">On</span>' +
+      `<span class="mfa-note" style="margin:0">${escapeHtml(verified[0].friendly_name || "Authenticator app")}</span></div>` +
+      (atAal2
+        ? '<p class="mfa-note">You entered a code this session.</p>'
+        : '<p class="mfa-note">You signed in without a code this session. Sign out and back in if you need administrator tools.</p>') +
+      '<div class="mfa-btns"><button type="button" class="cancel" id="mfaRemoveBtn">Turn off two-step verification</button></div>' +
+      '<p class="mfa-msg" id="mfaMsg" aria-live="polite"></p>' +
+      (isAdmin && required
+        ? '<p class="mfa-warn">Two-step verification is required for administrators. Turning it off will remove your administrator tools until you set it up again.</p>'
+        : "");
+
+    container.querySelector("#mfaRemoveBtn").addEventListener("click", async () => {
+      const msg = container.querySelector("#mfaMsg");
+      if (!confirm("Turn off two-step verification? Your account will be protected by your password alone.")) return;
+      msg.className = "mfa-msg";
+      msg.textContent = "Removing…";
+      try {
+        for (const f of verified) await mfaUnenroll(f.id);
+        if (typeof refreshActivity === "function" && refreshActivity) refreshActivity();
+        mountMfaPanel(container);
+      } catch (err) {
+        console.error("Couldn't remove the factor:", err);
+        msg.className = "mfa-msg err";
+        msg.textContent = "Couldn't turn it off. Try again.";
+      }
+    });
+    return;
+  }
+
+  container.innerHTML =
+    '<div class="mfa-row"><span class="mfa-pill off">Off</span></div>' +
+    (isAdmin
+      ? (required
+          ? '<p class="mfa-warn"><strong>Required for administrators.</strong> Your administrator tools stay unavailable until you set this up.</p>'
+          : '<p class="mfa-warn"><strong>You are an administrator.</strong> This will become required. Setting it up now avoids being caught out when it is.</p>')
+      : "") +
+    '<div class="mfa-btns"><button type="button" class="go" id="mfaSetupBtn">Set up two-step verification</button></div>' +
+    '<p class="mfa-msg" id="mfaMsg" aria-live="polite"></p>';
+
+  container.querySelector("#mfaSetupBtn").addEventListener("click", () => startMfaSetup(container));
+}
+
+async function startMfaSetup(container) {
+  const msg = container.querySelector("#mfaMsg");
+  msg.className = "mfa-msg";
+  msg.textContent = "Preparing…";
+
+  let enrolment;
+  try {
+    enrolment = await mfaStartEnrolment("Authenticator app");
+  } catch (err) {
+    console.error("Couldn't start enrolment:", err);
+    msg.className = "mfa-msg err";
+    // The commonest cause by far, and the least obvious.
+    msg.textContent = "Couldn't start setup. If you already have a half-finished setup, reload and try again.";
+    return;
+  }
+
+  container.insertAdjacentHTML("beforeend",
+    '<div class="mfa-setup" id="mfaSetup">' +
+    "<p class=\"mfa-note\" style=\"margin-top:0\">Scan this with Google Authenticator, Microsoft Authenticator, or any TOTP app.</p>" +
+    `<img src="${escapeHtml(enrolment.qr)}" alt="QR code for setting up two-step verification">` +
+    '<p class="mfa-note" style="margin:0 0 6px">Can\'t scan? Type this key into the app instead:</p>' +
+    `<p class="mfa-secret">${escapeHtml(enrolment.secret || "")}</p>` +
+    '<p class="mfa-note" style="margin:0 0 8px">Then enter the six-digit code it shows:</p>' +
+    '<input type="text" id="mfaSetupCode" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" aria-label="Six-digit code from your authenticator app">' +
+    '<div class="mfa-btns">' +
+    '<button type="button" class="cancel" id="mfaSetupCancel">Cancel</button>' +
+    '<button type="button" class="go" id="mfaSetupConfirm" disabled>Confirm</button>' +
+    "</div></div>");
+
+  msg.textContent = "";
+  const panel = container.querySelector("#mfaSetup");
+  const input = panel.querySelector("#mfaSetupCode");
+  const confirmBtn = panel.querySelector("#mfaSetupConfirm");
+
+  input.addEventListener("input", () => {
+    input.value = input.value.replace(/\D/g, "").slice(0, 6);
+    confirmBtn.disabled = !mfaCodeLooksValid(input.value);
+  });
+
+  // Cancelling deletes the half-made factor. Leaving it would put an
+  // unverified row in auth.mfa_factors that confers nothing but blocks
+  // a second enrolment attempt with a confusing error.
+  panel.querySelector("#mfaSetupCancel").addEventListener("click", async () => {
+    try {
+      await mfaUnenroll(enrolment.factorId, true);
+    } catch (err) {
+      console.warn("Couldn't clean up the cancelled enrolment:", err);
+    }
+    mountMfaPanel(container);
+  });
+
+  confirmBtn.addEventListener("click", async () => {
+    confirmBtn.disabled = true;
+    input.disabled = true;
+    msg.className = "mfa-msg";
+    msg.textContent = "Checking…";
+    try {
+      await mfaVerifyEnrolment(enrolment.factorId, input.value);
+      msg.className = "mfa-msg ok";
+      msg.textContent = "Two-step verification is on.";
+      if (typeof refreshActivity === "function" && refreshActivity) refreshActivity();
+      setTimeout(() => mountMfaPanel(container), 900);
+    } catch (err) {
+      console.warn("Verification failed:", err);
+      msg.className = "mfa-msg err";
+      msg.textContent = "That code didn't work. Codes change every 30 seconds — try the current one.";
+      input.disabled = false;
+      input.value = "";
+      input.focus();
+      confirmBtn.disabled = true;
+    }
+  });
+
+  input.focus();
 }

@@ -126,14 +126,29 @@ function currentPageName() {
   return last || "dashboard.html";
 }
 
-// Reads ?returnTo= and answers with a page name that is certainly ours.
-// Anything unrecognised silently becomes the dashboard.
-function safeReturnTarget() {
+// Captured ONCE, at load, before anything can strip it.
+//
+// page-index.js calls history.replaceState() to clean tokens and status
+// flags out of the URL, and several of those calls happen BEFORE the
+// redirect that needs this value. Reading the query string lazily meant
+// ?returnTo= survived the password sign-in but was silently gone on the
+// UP Mail and confirmed-signup paths — the deep link worked or didn't
+// depending on how you signed in, which is worse than not working.
+//
+// config.js loads before any page script, so this runs first.
+const CAPTURED_RETURN_TARGET = (() => {
   try {
     const asked = new URLSearchParams(window.location.search).get("returnTo");
+    // Hardcoded list, never a raw URL: an open redirect on a sign-in
+    // page is a phishing primitive, because the link really does start
+    // at your own domain.
     if (asked && RETURN_PAGES.includes(asked)) return asked;
   } catch (_) {}
   return "dashboard.html";
+})();
+
+function safeReturnTarget() {
+  return CAPTURED_RETURN_TARGET;
 }
 
 function signInUrlWithReturn(extraQuery) {
@@ -1397,7 +1412,13 @@ function startSessionWatch() {
       await accessRevokedSignOut("disabled");
       return;
     }
-    if (state.approved !== true && state.is_admin !== true) {
+    // is_admin_row is raw membership of the admins table, ignoring
+    // assurance level. Without it, an administrator who has no approved
+    // profile of their own and has not yet entered a code would be
+    // signed out by this check — and enrolling is the one thing they
+    // need to still be signed in to do. That is a lockout loop, and it
+    // would only appear once MFA enforcement was switched on.
+    if (state.approved !== true && state.is_admin !== true && state.is_admin_row !== true) {
       await accessRevokedSignOut("revoked");
       return;
     }
@@ -1417,4 +1438,121 @@ function startSessionWatch() {
 
   tick();
   setInterval(tick, SESSION_WATCH_MS);
+}
+
+// ---------------------------------------------------------------------
+// Two-step verification (TOTP)
+//
+// Supabase does the cryptography and the QR code; this is the glue and
+// the wording. Three things happen here:
+//
+//   enrolment   a factor is created, a QR code shown, and a code typed
+//               back to prove the authenticator app really has it. An
+//               enrolment that is never verified leaves a dead row, so
+//               it is cleaned up on cancel.
+//
+//   challenge   after a password sign-in, a user who has a verified
+//               factor is at aal1 and must enter a code to reach aal2.
+//
+//   state       whether this session is aal2, which is what is_admin()
+//               tests once enforcement is on.
+//
+// Note there are no backup codes. Supabase TOTP does not have them. A
+// lost device is recovered by somebody with SQL access deleting the
+// factor — see BREAK GLASS in patch-2026-08-11d.sql.
+// ---------------------------------------------------------------------
+
+async function mfaState() {
+  const { data, error } = await supabaseClient.rpc("my_mfa_state");
+  if (error) throw error;
+  return data;
+}
+
+async function mfaListFactors() {
+  const { data, error } = await supabaseClient.auth.mfa.listFactors();
+  if (error) throw error;
+  return (data && data.totp) || [];
+}
+
+// Returns { currentLevel, nextLevel }. nextLevel === "aal2" while
+// currentLevel === "aal1" is the signal that a code is owed.
+async function mfaAssuranceLevel() {
+  const { data, error } = await supabaseClient.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (error) throw error;
+  return data || {};
+}
+
+async function mfaNeedsChallenge() {
+  try {
+    const level = await mfaAssuranceLevel();
+    return level.nextLevel === "aal2" && level.currentLevel !== "aal2";
+  } catch (err) {
+    // Never block a sign-in because this check failed. If a code is
+    // genuinely owed, the powers that need aal2 simply stay unavailable
+    // until the session is refreshed — which is the safe direction.
+    console.warn("Couldn't read assurance level:", err);
+    return false;
+  }
+}
+
+// Starts an enrolment. Returns { factorId, qr, secret, uri }.
+// The factor exists from this moment but is unverified and confers
+// nothing until mfaVerifyEnrolment() succeeds.
+async function mfaStartEnrolment(friendlyName) {
+  const { data, error } = await supabaseClient.auth.mfa.enroll({
+    factorType: "totp",
+    friendlyName: friendlyName || `Portal ${new Date().toLocaleDateString()}`
+  });
+  if (error) throw error;
+  return {
+    factorId: data.id,
+    qr: data.totp && data.totp.qr_code,
+    secret: data.totp && data.totp.secret,
+    uri: data.totp && data.totp.uri
+  };
+}
+
+// Proves the app holds the secret. On success Supabase issues a fresh
+// aal2 session, so admin powers become available immediately without a
+// re-sign-in.
+async function mfaVerifyEnrolment(factorId, code) {
+  const { data: challenge, error: challengeErr } =
+    await supabaseClient.auth.mfa.challenge({ factorId });
+  if (challengeErr) throw challengeErr;
+
+  const { error: verifyErr } = await supabaseClient.auth.mfa.verify({
+    factorId,
+    challengeId: challenge.id,
+    code: String(code || "").replace(/\s/g, "")
+  });
+  if (verifyErr) throw verifyErr;
+
+  await recordAccountEvent("mfa_enrolled", { factor_id: factorId });
+  return true;
+}
+
+// The sign-in-time challenge, against an already-verified factor.
+async function mfaChallengeExisting(factorId, code) {
+  const { error } = await supabaseClient.auth.mfa.challengeAndVerify({
+    factorId,
+    code: String(code || "").replace(/\s/g, "")
+  });
+  if (error) throw error;
+  return true;
+}
+
+async function mfaUnenroll(factorId, silent) {
+  const { error } = await supabaseClient.auth.mfa.unenroll({ factorId });
+  if (error) throw error;
+  // Cancelling a half-finished enrolment is not an event worth showing
+  // anybody. Removing a working factor very much is.
+  if (!silent) await recordAccountEvent("mfa_removed", { factor_id: factorId });
+  return true;
+}
+
+// A code is six digits. Rejecting anything else client-side avoids
+// spending a server round trip on an obvious typo, and avoids the
+// unhelpful "invalid code" that a five-digit entry would otherwise get.
+function mfaCodeLooksValid(code) {
+  return /^\d{6}$/.test(String(code || "").replace(/\s/g, ""));
 }

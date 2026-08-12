@@ -6,20 +6,20 @@ const path = require("path");
 const SCHEMA = path.join(__dirname, "deploy-schema.sql");
 
 const EXPECTED = {
-  tables: 17,
+  tables: 18,
   indexes: 29,
-  functions: 70,
+  functions: 80,
   rowTriggers: 15,
   eventTriggers: 1,
   publicPolicies: 17,
   storagePolicies: 4,
   buckets: 1,
-  rlsTables: 17,
+  rlsTables: 18,
   cronJobs: 1,
   realtimeTables: 1
 };
 
-const DENY_ALL_BY_DESIGN = new Set([ "admins", "admin_invites", "admin_removal_requests", "ai_assistant_usage", "anon_probe_budget" ]);
+const DENY_ALL_BY_DESIGN = new Set([ "admins", "admin_invites", "admin_removal_requests", "ai_assistant_usage", "anon_probe_budget", "transactions_staging" ]);
 
 const EXTENSION_FUNCTIONS = new Set([ "similarity", "word_similarity", "show_trgm", "gen_random_uuid", "gen_random_bytes", "crypt", "digest", "uuid_generate_v4" ]);
 
@@ -78,7 +78,7 @@ function inventory(stripped) {
     return found;
   };
   const tables = new Map;
-  const tableRe = /create\s+table\s+public\.([a-z_0-9]+)\s*\(/gi;
+  const tableRe = /create\s+(?:unlogged\s+|temporary\s+|temp\s+)?table\s+public\.([a-z_0-9]+)\s*\(/gi;
   let m;
   while ((m = tableRe.exec(stripped)) !== null) {
     const name = m[1];

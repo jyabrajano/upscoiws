@@ -40,6 +40,18 @@ let loading = false;
 // and written into the exported sheet.
 let lastStatement = null;
 
+// True while a statement is being printed or exported.
+//
+// The table is swapped to the FULL statement for printing, and the print
+// dialog can stay open for as long as the person takes. A realtime
+// notification arriving in that window — and the daily import fires one
+// for every open browser — would call loadPage() and put the 100-row
+// page back underneath an open print dialog. The printout would then
+// carry a reference header saying "195 transactions" above 100 rows: a
+// statement that misrepresents itself, with nothing on screen to show
+// it happened.
+let statementInProgress = false;
+
 const TABLE_COLUMNS = {
   ATM: [
     { label: "Credit Date", field: "txn_date", type: "date" },
@@ -82,7 +94,7 @@ function pesos(value) {
 // ---------------------------------------------------------------------
 
 async function loadPage() {
-  if (loading) return;
+  if (loading || statementInProgress) return;
   loading = true;
   const note = document.getElementById("filterNote");
   const { from, to, account } = currentFilters();
@@ -340,12 +352,23 @@ async function fetchAllInRange() {
   return rows;
 }
 
+let dataChangedDuringStatement = false;
+
 function statementBusy(busy, label) {
   const printBtn = document.getElementById("printBtn");
   const exportBtn = document.getElementById("exportBtn");
+  statementInProgress = busy;
   printBtn.disabled = busy;
   exportBtn.disabled = busy;
   document.getElementById("filterNote").textContent = busy ? label : "";
+
+  // Catch up on anything that arrived while the dialog was open.
+  if (!busy && dataChangedDuringStatement) {
+    dataChangedDuringStatement = false;
+    lastStatement = null;
+    paintStatementRef();
+    loadPage();
+  }
 }
 
 function reportStatementError(err) {
@@ -368,11 +391,30 @@ async function printStatement() {
     const rows = await fetchAllInRange();
     await issueCurrentStatement();
     updatePrintSub();
-    // Print shows the whole statement, not the page on screen.
+    // Print shows the whole statement, not just the page on screen.
     renderTxns(rows);
-    window.print();
-    // Put the page back afterwards.
-    renderTxns(pageRows);
+
+    // Restore on afterprint, not on the next line. window.print() blocks
+    // in most browsers but not all — where it returns immediately, the
+    // old code put the single page back before the dialog had rendered,
+    // and the person got 100 rows instead of their whole statement with
+    // nothing to suggest anything had gone wrong.
+    await new Promise(resolve => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        window.removeEventListener("afterprint", finish);
+        clearTimeout(guard);
+        renderTxns(pageRows);
+        resolve();
+      };
+      window.addEventListener("afterprint", finish);
+      // Safety net: afterprint does not fire everywhere. Without this the
+      // table would stay stuck on the full statement.
+      const guard = setTimeout(finish, 60000);
+      window.print();
+    });
   } catch (err) {
     reportStatementError(err);
   } finally {
@@ -503,6 +545,15 @@ async function exportToExcel() {
   await loadPage();
 
   watchDatasets(["transactions", "released_transactions"], () => {
+    // Mid-print or mid-export: leave everything alone. The statement
+    // being produced was issued against the data as it was, and its
+    // digest still describes that data honestly. Refreshing underneath
+    // it would corrupt the output; the refresh happens when the dialog
+    // closes instead.
+    if (statementInProgress) {
+      dataChangedDuringStatement = true;
+      return;
+    }
     // Fresh data invalidates any reference already on screen: it was
     // issued against the previous contents.
     lastStatement = null;

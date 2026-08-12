@@ -230,6 +230,18 @@ form.addEventListener("submit", async e => {
     if (redeemPendingPrivacyAck(data.user.email)) {
       await recordPrivacyNoticeAck();
     }
+    if (await mfaNeedsChallenge()) {
+      const passed = await promptForMfaCode();
+      if (!passed) {
+        // Signed out on purpose: a session that stopped halfway must not
+        // survive the page. But say so — the previous version dropped
+        // the person back to a blank form with no explanation, which
+        // reads as "sign-in is broken" rather than "you cancelled".
+        await supabaseClient.auth.signOut();
+        showStatusRich("Sign-in not completed", "You'll need the code from your authenticator app to finish signing in.", "notice");
+        return;
+      }
+    }
     const state = await getApprovalState(data.user.email);
     if (state.status !== "approved") {
       await supabaseClient.auth.signOut();
@@ -319,6 +331,18 @@ form.addEventListener("submit", async e => {
       showStatusRich("Couldn't complete sign-in", "UP Mail didn't return a valid session. Try again, or sign in with your email and password.", "error");
       return;
     }
+    if (await mfaNeedsChallenge()) {
+      const passed = await promptForMfaCode();
+      if (!passed) {
+        // Signed out on purpose: a session that stopped halfway must not
+        // survive the page. But say so — the previous version dropped
+        // the person back to a blank form with no explanation, which
+        // reads as "sign-in is broken" rather than "you cancelled".
+        await supabaseClient.auth.signOut();
+        showStatusRich("Sign-in not completed", "You'll need the code from your authenticator app to finish signing in.", "notice");
+        return;
+      }
+    }
     const state = await getApprovalState(session.user.email);
     if (state.status === "approved") {
       await recordAccountEvent("sign_in");
@@ -344,4 +368,89 @@ const sharedDeviceBox = document.getElementById("sharedDevice");
 if (sharedDeviceBox) {
   sharedDeviceBox.checked = sharedDevice();
   sharedDeviceBox.addEventListener("change", () => setSharedDevice(sharedDeviceBox.checked));
+}
+
+
+// ---------------------------------------------------------------------
+// The sign-in code prompt
+//
+// Shown only when a verified factor exists and this session has not yet
+// reached aal2. Resolves true once the code is accepted, false if the
+// person gives up — and the caller signs them out on false, so a
+// half-authenticated session never survives the page.
+//
+// Built here rather than as markup in index.html because it must not be
+// present in the DOM for the great majority of sign-ins that never see
+// it.
+// ---------------------------------------------------------------------
+async function promptForMfaCode() {
+  let factors;
+  try {
+    factors = await mfaListFactors();
+  } catch (err) {
+    console.error("Couldn't list your verification methods:", err);
+    showStatusRich("Couldn't complete sign-in", "We couldn't check your two-step verification. Try again in a moment.", "error");
+    return false;
+  }
+  const factor = factors.find(f => f.status === "verified");
+  if (!factor) return true;
+
+  if (!document.getElementById("mfaPromptStyles")) {
+    const style = document.createElement("style");
+    style.id = "mfaPromptStyles";
+    style.textContent = ".mfa-back{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.6);font:14px/1.55 system-ui,sans-serif;}" + ".mfa-card{max-width:380px;width:100%;background:#fff;border-radius:14px;padding:26px;box-shadow:0 12px 40px rgba(15,23,42,.28);color:#0f172a;text-align:center;}" + ".mfa-card h2{margin:0 0 6px;font-size:17px;}" + ".mfa-card p{margin:0 0 16px;font-size:13px;color:#475569;}" + ".mfa-card input{width:100%;padding:12px;font:600 22px/1 ui-monospace,monospace;letter-spacing:.32em;text-align:center;border:1.5px solid #cbd5e1;border-radius:10px;box-sizing:border-box;}" + ".mfa-card input:focus{outline:none;border-color:#7b1113;box-shadow:0 0 0 3px rgba(123,17,19,.08);}" + ".mfa-err{min-height:18px;margin:8px 0 0;font-size:12.5px;color:#b91c1c;}" + ".mfa-actions{display:flex;gap:8px;margin-top:14px;}" + ".mfa-actions button{flex:1;border:0;border-radius:10px;padding:12px;font:700 13.5px/1 inherit;cursor:pointer;}" + ".mfa-go{background:#7b1113;color:#fff;}.mfa-go:disabled{opacity:.45;cursor:default;}" + ".mfa-cancel{background:#e2e8f0;color:#0f172a;}";
+    document.head.appendChild(style);
+  }
+
+  return new Promise(resolve => {
+    const back = document.createElement("div");
+    back.className = "mfa-back";
+    back.setAttribute("role", "dialog");
+    back.setAttribute("aria-modal", "true");
+    back.innerHTML = '<div class="mfa-card">' + "<h2>Enter your verification code</h2>" + "<p>Open your authenticator app and type the six-digit code for the Cash Office portal.</p>" + '<input type="text" id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="Six-digit verification code">' + '<p class="mfa-err" id="mfaErr" aria-live="polite"></p>' + '<div class="mfa-actions">' + '<button type="button" class="mfa-cancel" id="mfaCancel">Cancel</button>' + '<button type="button" class="mfa-go" id="mfaGo" disabled>Verify</button>' + "</div></div>";
+    document.body.appendChild(back);
+
+    const input = back.querySelector("#mfaCode");
+    const go = back.querySelector("#mfaGo");
+    const err = back.querySelector("#mfaErr");
+
+    function close(value) {
+      back.remove();
+      resolve(value);
+    }
+
+    async function submit() {
+      if (!mfaCodeLooksValid(input.value)) return;
+      go.disabled = true;
+      input.disabled = true;
+      err.textContent = "";
+      try {
+        await mfaChallengeExisting(factor.id, input.value);
+        close(true);
+      } catch (e) {
+        // A wrong code is the ordinary case, not an incident. Clear the
+        // field and let them try again rather than dropping them back
+        // to a blank sign-in form.
+        console.warn("Verification failed:", e);
+        err.textContent = "That code didn't work. Codes change every 30 seconds — try the current one.";
+        input.disabled = false;
+        input.value = "";
+        input.focus();
+        go.disabled = true;
+      }
+    }
+
+    input.addEventListener("input", () => {
+      input.value = input.value.replace(/\D/g, "").slice(0, 6);
+      go.disabled = !mfaCodeLooksValid(input.value);
+      if (mfaCodeLooksValid(input.value)) submit();
+    });
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter") submit();
+    });
+    go.addEventListener("click", submit);
+    back.querySelector("#mfaCancel").addEventListener("click", () => close(false));
+
+    input.focus();
+  });
 }
