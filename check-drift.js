@@ -216,7 +216,11 @@ function offline() {
     functions: inv.functions.size,
     rowTriggers: inv.rowTriggers.length,
     eventTriggers: inv.eventTriggers.length,
-    publicPolicies: inv.publicPolicies.length,
+    // Distinct names, not occurrences. deploy-schema.sql legitimately
+    // redefines objects in later sections -- a policy re-created to add a
+    // clause is the SAME policy, and counting it twice made the file look
+    // inconsistent with a database that was correct.
+    publicPolicies: new Set(inv.publicPolicies).size,
     storagePolicies: inv.storagePolicies.length,
     buckets: inv.buckets.length,
     rlsTables: inv.rlsTables.length,
